@@ -1,0 +1,4 @@
+# Python dependencies for War Card Game V3
+
+# Image processing library for loading and manipulating card images
+Pillow>=10.0.0

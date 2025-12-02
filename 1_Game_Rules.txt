@@ -1,0 +1,25 @@
+War Game Rules:
+
+1. Shuffle the Deck: At the start of the game, shuffle the deck.
+2. Card Distribution: All players are assigned an equal number of cards. 
+   Any leftover cards are discarded.
+3. Playing a Round: Each player draws the top card from their deck and places it on the table. 
+   The player with the highest-ranked card wins the round.
+4. Winning a Round: The round winner collects all cards from the table and places them into their reserve deck.
+5. Using the Reserve Deck: When a player runs out of cards in their deck, 
+   they shuffle their reserve deck and use it as their new deck.
+6. Game End: The winner is the last player remaining with cards. 
+   The game ends when all but one player have no cards left.
+7. Tiebreaker Rules: If multiple players have the highest-ranked card, a tiebreaker is required. 
+   
+The tiebreaker rules are as follows:
+- Each player involved in the tiebreaker draws three cards and places them on the table, then plays the fourth card.
+- If multiple players still have the highest-ranked card after the tiebreaker, they compete in another tiebreaker.
+- If any player does not have enough cards to participate in the tiebreaker, 
+  they forfeit and place all of their remaining cards on the table.
+- If only one player has enough cards to play the tiebreaker, that player is declared the winner.
+- If none of the players have enough cards to participate in the tiebreaker, 
+  all players place all of their remaining cards on the table and play their final card.
+- If all players have zero cards to play a tiebreaker, all cards on the table are shuffled 
+  and distributed equally among the players in the tie. Any leftover cards are given to players at random, 
+  with no player receiving more than one extra card.
