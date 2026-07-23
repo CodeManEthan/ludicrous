@@ -85,3 +85,50 @@ class RoundEnded(Event):
 class GameOver(Event):
     winner: int | None
     total_rounds: int
+
+
+# --------------------------------------------------------------- blackjack
+# Seat 0 is the dealer in CardDealt events.
+
+@dataclass
+class StrategiesAssigned(Event):
+    strategies: dict[int, str]  # seat -> strategy name
+
+
+@dataclass
+class ShoeShuffled(Event):
+    cards: int  # shoe size after shuffling
+
+
+@dataclass
+class CardDealt(Event):
+    seat: int  # 0 = dealer
+    card: Card
+    face_up: bool
+
+
+@dataclass
+class SeatAction(Event):
+    seat: int
+    action: str  # "hit" | "stand" | "double"
+    total: int   # hand total after the action resolves
+
+
+@dataclass
+class DealerRevealed(Event):
+    card: Card
+    total: int
+
+
+@dataclass
+class HandResult(Event):
+    seat: int
+    outcome: str  # "win" | "lose" | "push" | "blackjack" | "bust"
+    payout: float  # in bet units: +1 win, -1 lose, +1.5 blackjack, ±2 doubled
+    player_total: int
+    dealer_total: int
+
+
+@dataclass
+class RoundSettled(Event):
+    bankrolls: dict[int, float]  # seat -> cumulative units won/lost

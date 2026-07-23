@@ -11,7 +11,15 @@ import json
 import random
 import time
 
-from engine import WarGame, run_batch, summarize_batch
+from engine import (
+    STRATEGIES,
+    BlackjackGame,
+    WarGame,
+    run_batch,
+    run_blackjack_batch,
+    summarize_batch,
+    summarize_blackjack_batch,
+)
 from engine import events as ev
 from random_names import random_300_first_names
 
@@ -28,8 +36,12 @@ def build_names(num_players: int, seed: int) -> list[str]:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("-p", "--players", type=int, default=4, help="number of players (default 4)")
-    parser.add_argument("-d", "--decks", type=int, default=1, help="number of 52-card decks (default 1)")
+    parser.add_argument("--game", choices=["war", "blackjack"], default="war")
+    parser.add_argument("-p", "--players", type=int, default=4, help="players / blackjack seats (default 4)")
+    parser.add_argument("-d", "--decks", type=int, default=None, help="52-card decks (default: war 1, blackjack 6)")
+    parser.add_argument("--rounds", type=int, default=100, help="blackjack: rounds per session (default 100)")
+    parser.add_argument("--strategies", default="basic",
+                        help=f"blackjack: comma-separated, assigned round-robin ({', '.join(STRATEGIES)})")
     parser.add_argument("--seed", type=int, default=None, help="RNG seed for a reproducible game")
     parser.add_argument("--max-rounds", type=int, default=1_000_000, help="safety cap on rounds")
     parser.add_argument("--random-names", action="store_true", help="use random player names")
@@ -39,6 +51,15 @@ def main():
     args = parser.parse_args()
 
     seed = args.seed if args.seed is not None else random.randrange(1_000_000_000)
+    if args.decks is None:
+        args.decks = 6 if args.game == "blackjack" else 1
+
+    if args.game == "blackjack":
+        if args.batch:
+            run_blackjack_batch_cli(args, seed)
+        else:
+            run_blackjack_cli(args, seed)
+        return
 
     if args.batch:
         run_batch_cli(args, seed)
@@ -92,6 +113,59 @@ def main():
         print(f"Recording written to {args.json} ({len(game.events):,} events)")
 
 
+def run_blackjack_cli(args, seed):
+    strategies = [s.strip() for s in args.strategies.split(",") if s.strip()]
+    game = BlackjackGame(args.players, args.decks, args.rounds,
+                         strategies=strategies, seed=seed)
+    print(f"Blackjack — {args.players} seat(s), {args.decks} deck(s), "
+          f"{args.rounds} rounds, seed {seed}")
+    start_time = time.perf_counter()
+    summary = game.run()
+    elapsed = time.perf_counter() - start_time
+    for seat in summary["seats"].values():
+        print(f"  {seat['name']:<8} {seat['strategy']:<14} "
+              f"{seat['bankroll']:>+8.1f} units  "
+              f"({seat['wins']}W {seat['losses']}L {seat['pushes']}P, "
+              f"{seat['blackjacks']} BJ)")
+    print("Per strategy:")
+    for name, entry in sorted(summary["per_strategy"].items(), key=lambda kv: -kv[1]["ev"]):
+        print(f"  {name:<14} {entry['net']:>+8.1f} units over {entry['hands']:,} hands "
+              f"(EV {entry['ev']:+.2%})")
+    print(f"Winner: {summary['winner_name']}  ({elapsed:.2f}s)")
+    if args.json:
+        with open(args.json, "w") as f:
+            json.dump({"summary": summary,
+                       "events": [e.to_dict() for e in game.events]}, f)
+        print(f"Recording written to {args.json} ({len(game.events):,} events)")
+
+
+def run_blackjack_batch_cli(args, base_seed):
+    strategies = [s.strip() for s in args.strategies.split(",") if s.strip()]
+    print(f"Blackjack batch — {args.batch:,} sessions of {args.players} seat(s) x "
+          f"{args.rounds} rounds, {args.decks} deck(s), "
+          f"seeds {base_seed}..{base_seed + args.batch - 1}")
+    start_time = time.perf_counter()
+    rows = run_blackjack_batch(args.players, args.decks, args.rounds, args.batch,
+                               strategies, base_seed=base_seed)
+    elapsed = time.perf_counter() - start_time
+    agg = summarize_blackjack_batch(rows)
+    print(f"{agg['hands']:,} hands in {elapsed:.2f}s "
+          f"({agg['hands'] / elapsed:,.0f} hands/s)  |  "
+          f"overall EV {agg['ev']:+.2%}")
+    print(f"{'strategy':<14} {'hands':>10} {'net units':>10} {'EV/hand':>9}")
+    for name, entry in sorted(agg["per_strategy"].items(), key=lambda kv: -kv[1]["ev"]):
+        print(f"{name:<14} {entry['hands']:>10,} {entry['net']:>10,.0f} {entry['ev']:>8.2%}")
+    s = agg["session_net"]
+    print(f"Session net: mean {s['mean']:+.1f} ±{s['stdev']:.1f}  "
+          f"range {s['min']:+.1f}..{s['max']:+.1f}")
+    print("Best sessions:  " + "  ".join(f"{g['net']:+.1f} (seed {g['seed']})" for g in agg["best"][:3]))
+    print("Worst sessions: " + "  ".join(f"{g['net']:+.1f} (seed {g['seed']})" for g in agg["worst"][:3]))
+    if args.json:
+        with open(args.json, "w") as f:
+            json.dump({"aggregate": agg, "games": rows}, f)
+        print(f"Batch results written to {args.json}")
+
+
 def run_batch_cli(args, base_seed):
     print(f"War batch — {args.batch:,} games of {args.players} players, "
           f"{args.decks} deck(s), seeds {base_seed}..{base_seed + args.batch - 1}")
@@ -103,6 +177,10 @@ def run_batch_cli(args, base_seed):
     r = agg["rounds"]
     print(f"Completed {agg['completed']:,}/{agg['games']:,} games in {elapsed:.2f}s "
           f"({agg['games'] / elapsed:,.0f} games/s)")
+    if agg["unfinished"]:
+        print(f"WARNING: {agg['unfinished']:,} game(s) hit the {args.max_rounds:,}-round cap "
+              f"and were stopped unfinished — excluded from the statistics below. "
+              f"Raise --max-rounds to let them finish.")
     print(f"Rounds: mean {r['mean']:,.0f}  median {r['median']:,.0f}  "
           f"stdev {r['stdev']:,.0f}  range {r['min']:,}-{r['max']:,}")
     print(f"Wars/game: {agg['mean_wars']:,.1f}  |  deepest war: {agg['deepest_war']}  "

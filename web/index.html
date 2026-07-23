@@ -14,15 +14,31 @@
         <button type="button" data-mode="single" class="active">Single game</button>
         <button type="button" data-mode="batch">Batch</button>
       </div>
-      <label>Players
+      <label>Game
+        <select id="gameSel">
+          <option value="war" selected>War</option>
+          <option value="blackjack">Blackjack</option>
+        </select>
+      </label>
+      <label id="playersLabel">Players
         <input id="players" type="number" min="2" max="100" value="6">
       </label>
       <label>Decks
         <input id="decks" type="number" min="1" max="100" value="3">
       </label>
+      <label id="roundsLabel" hidden>Rounds
+        <input id="rounds" type="number" min="1" max="10000" value="100">
+      </label>
       <label id="gamesLabel" hidden>Games
         <input id="games" type="number" min="1" max="10000" value="1000">
       </label>
+      <label id="maxRoundsLabel" title="Safety cap: war games stopped here count as unfinished">Max rounds
+        <input id="maxRounds" type="number" min="100" max="20000000" step="1" value="1000000">
+      </label>
+      <div id="stratWrap" class="strat-wrap" hidden>
+        <span class="strat-title">Strategies (round-robin)</span>
+        <div id="stratChips" class="strat-chips"></div>
+      </div>
       <label id="namesLabel">Names
         <select id="nameMode">
           <option value="random" selected>Random</option>
@@ -70,11 +86,12 @@
     </section>
 
     <section id="table" class="panel">
+      <div id="dealerArea" class="dealer-area" hidden></div>
       <div id="grid" class="grid"></div>
     </section>
 
     <section id="chartSection" class="panel">
-      <div class="section-title">Card counts over time <span class="hint" id="chartHint">— click the chart to seek</span></div>
+      <div class="section-title"><span id="chartTitle">Card counts over time</span> <span class="hint" id="chartHint">— click the chart to seek</span></div>
       <div id="chartWrap">
         <canvas id="chart"></canvas>
         <canvas id="overlay"></canvas>
@@ -90,8 +107,18 @@
 
     <section id="batchStats" class="stat-row" hidden></section>
 
+    <section id="batchNote" class="panel note warn" hidden></section>
+
+    <section id="evSection" class="panel" hidden>
+      <div class="section-title">EV per hand by strategy <span class="hint">— higher is better; 0 = break-even</span></div>
+      <div id="evWrap" class="chart-wrap">
+        <canvas id="evChart"></canvas>
+        <div id="evTip" class="tip" hidden></div>
+      </div>
+    </section>
+
     <section id="histSection" class="panel" hidden>
-      <div class="section-title">Game length distribution</div>
+      <div class="section-title" id="histTitle">Game length distribution</div>
       <div id="histWrap" class="chart-wrap">
         <canvas id="hist"></canvas>
         <div id="histTip" class="tip" hidden></div>
@@ -109,7 +136,7 @@
     <section id="outlierSection" class="panel" hidden>
       <div class="section-title">Outlier games <span class="hint">— replay any of them card by card</span></div>
       <table class="outliers">
-        <thead>
+        <thead id="outlierHead">
           <tr><th></th><th>Seed</th><th>Rounds</th><th>Wars</th><th>Deepest</th><th>Biggest pot</th><th>Winner</th><th></th></tr>
         </thead>
         <tbody id="outlierRows"></tbody>

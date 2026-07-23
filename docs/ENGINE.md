@@ -1,19 +1,20 @@
 # Headless Engine (`engine/`)
 
-The `engine` package is the game's backend: pure Python, no tkinter, no GUI
-imports. It simulates games and emits an **event log** — a complete recording
-that any frontend (the upcoming web UI, the CLI, tests) can replay at any
-speed without re-running the simulation.
+The `engine` package is the games' backend: pure Python, no GUI imports. It
+simulates games and emits an **event log** — a complete recording that any
+frontend (the web UI, the CLI, tests) can replay at any speed without
+re-running the simulation.
 
 ## Layout
 
 ```
 engine/
-├── __init__.py    # public exports: WarGame, Card, build_shoe, events, run_batch
+├── __init__.py    # public exports: WarGame, BlackjackGame, run_batch, events, …
 ├── cards.py       # Card (rank, suit), deck/shoe building
 ├── events.py      # event dataclasses (the recording format)
 ├── war.py         # WarGame: rules, state, event emission
-└── batch.py       # run_batch/summarize_batch: parallel simulation + aggregation
+├── blackjack.py   # BlackjackGame: rules, Strategy interface, STRATEGIES registry
+└── batch.py       # parallel batch simulation + aggregation for both games
 ```
 
 ## Usage
@@ -42,17 +43,50 @@ python3 simulate.py -p 4 --batch 1000 --seed 0        # 1,000-game statistics
 python3 -m unittest discover        # run the engine test suite
 ```
 
+## Blackjack and the Strategy interface
+
+`BlackjackGame(num_seats, num_decks=6, num_rounds=100, strategies=[...], seed)`
+plays a session of flat-bet rounds at one table against the dealer. Rules:
+dealer stands on all 17s, blackjack pays 3:2, dealer peeks, double on any
+first two cards; no splitting/insurance/surrender yet (so measured house
+edges run ~0.4-0.5% worse than published full-basic figures).
+
+A **strategy** is an object with
+`decide(hand, dealer_up_value, can_double) -> "hit" | "stand" | "double"` —
+it sees only the seat's own cards and the dealer upcard. Strategies are
+registered by name in `STRATEGIES` (`basic`, `never-bust`, `hit-below-15/16/17`)
+and assigned to seats round-robin, so one table can race strategies under
+identical conditions. `summary()["per_strategy"]` reports hands, net units,
+and EV per hand for each.
+
+Blackjack events: `StrategiesAssigned`, `ShoeShuffled`, `CardDealt` (seat 0 =
+dealer), `SeatAction`, `DealerRevealed`, `HandResult`, `RoundSettled`
+(cumulative bankrolls — the frontend's bankroll chart series).
+
+Validation note: over a million seeded hands, `basic` measures ≈ **-1.0%**
+EV per hand (published full basic ≈ -0.55% plus the missing-splits cost) and
+`hit-below-17` (≈ mimic-the-dealer) measures ≈ **-5.7%** vs the published
+≈ -5.5% — the engine reproduces the casino math.
+
 ## Batch simulation
 
 `run_batch(players, decks, games, base_seed)` fans games out across CPU cores
 with `ProcessPoolExecutor`, one summary row per game. Games are seeded
 `base_seed .. base_seed+N-1`, so every batch is reproducible and any game in
 it can be replayed individually from its seed. Workers run with
-`WarGame(..., record_events=False)`: the event log is skipped entirely (the
-`deepest_war` / `biggest_pot` stats are tracked inline on the game object),
-which keeps workers fast and memory-flat. `summarize_batch(rows)` aggregates:
-round distribution (min/max/mean/median/stdev), wins by seat, war stats, and
-the shortest/longest games with their seeds.
+`record_events=False`: the event log is skipped entirely (headline stats are
+tracked inline on the game object), which keeps workers fast and memory-flat.
+`summarize_batch(rows)` aggregates: round distribution
+(min/max/mean/median/stdev), wins by seat, war stats, and the
+shortest/longest games with their seeds. War games stopped by the
+`max_rounds` safety cap are counted as `unfinished` and excluded from the
+distribution statistics (capped values would bias them low); they remain in
+the outlier lists with `completed=False`.
+
+`run_blackjack_batch(seats, decks, rounds, games, strategies, base_seed)` is
+the blackjack equivalent (one row per session);
+`summarize_blackjack_batch(rows)` aggregates per-strategy hands/net/EV, the
+session-net distribution, and the best/worst sessions with their seeds.
 
 ## Event vocabulary
 

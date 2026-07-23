@@ -20,7 +20,14 @@ import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from engine import WarGame, run_batch, summarize_batch
+from engine import (
+    BlackjackGame,
+    WarGame,
+    run_batch,
+    run_blackjack_batch,
+    summarize_batch,
+    summarize_blackjack_batch,
+)
 from engine import events as ev
 from random_names import random_300_first_names
 
@@ -30,7 +37,9 @@ CARDS_DIR = ROOT / "cards"
 
 MAX_PLAYERS = 100
 MAX_DECKS = 100
-MAX_ROUNDS = 1_000_000
+DEFAULT_MAX_ROUNDS = 1_000_000  # war safety cap (games stopped here are "unfinished")
+MAX_ROUNDS_CEILING = 20_000_000
+MAX_BJ_ROUNDS = 10_000
 MAX_BATCH_GAMES = 10_000
 FULL_EVENT_BUDGET = 250_000  # events; ~25 MB of JSON is the ceiling for playback mode
 CHART_POINTS = 1200
@@ -62,15 +71,76 @@ def build_chart(counts_series: dict[int, list[int]], total_rounds: int) -> dict:
     return {"rounds": sample_rounds, "series": series}
 
 
+def run_blackjack_simulation(config: dict) -> dict:
+    seats = int(config.get("players", 4))
+    decks = int(config.get("decks", 6))
+    rounds = int(config.get("rounds", 100))
+    strategies = config.get("strategies") or ["basic"]
+    seed = config.get("seed")
+    seed = int(seed) if seed not in (None, "") else random.randrange(1_000_000_000)
+    if not 1 <= seats <= MAX_PLAYERS:
+        raise ValueError(f"seats must be between 1 and {MAX_PLAYERS}")
+    if not 1 <= decks <= MAX_DECKS:
+        raise ValueError(f"decks must be between 1 and {MAX_DECKS}")
+    if not 1 <= rounds <= MAX_BJ_ROUNDS:
+        raise ValueError(f"rounds must be between 1 and {MAX_BJ_ROUNDS}")
+
+    game = BlackjackGame(seats, decks, rounds, strategies=strategies, seed=seed)
+    game.start()
+    full_events = [e.to_dict() for e in game.events]
+    bankroll_series = {sid: [0.0] for sid in game.seats}
+    game.events.clear()
+    condensed = False
+
+    while not game.is_over:
+        round_events = game.play_round()
+        for event in round_events:
+            if isinstance(event, ev.RoundSettled):
+                for sid, bankroll in event.bankrolls.items():
+                    bankroll_series[sid].append(bankroll)
+        if not condensed:
+            full_events.extend(event.to_dict() for event in round_events)
+            if len(full_events) > FULL_EVENT_BUDGET:
+                condensed = True
+                full_events = None
+        game.events.clear()
+
+    summary = game.summary()
+    response = {
+        "game": "blackjack",
+        "summary": summary,
+        "stats": {
+            "hands": seats * rounds,
+            "net": round(sum(s.bankroll for s in game.seats.values()), 1),
+            "blackjacks": sum(s.blackjacks for s in game.seats.values()),
+            "busts": sum(s.busts for s in game.seats.values()),
+        },
+        "names": {s.id: s.name for s in game.seats.values()},
+        "strategies": {s.id: s.strategy_name for s in game.seats.values()},
+    }
+    if condensed:
+        response["mode"] = "condensed"
+        response["chart"] = build_chart(bankroll_series, game.round)
+    else:
+        response["mode"] = "full"
+        response["events"] = full_events
+    return response
+
+
 def run_simulation(config: dict) -> dict:
+    if config.get("game") == "blackjack":
+        return run_blackjack_simulation(config)
     players = int(config.get("players", 4))
     decks = int(config.get("decks", 1))
     seed = config.get("seed")
     seed = int(seed) if seed not in (None, "") else random.randrange(1_000_000_000)
+    max_rounds = int(config.get("max_rounds") or DEFAULT_MAX_ROUNDS)
     if not 2 <= players <= MAX_PLAYERS:
         raise ValueError(f"players must be between 2 and {MAX_PLAYERS}")
     if not 1 <= decks <= MAX_DECKS:
         raise ValueError(f"decks must be between 1 and {MAX_DECKS}")
+    if not 1 <= max_rounds <= MAX_ROUNDS_CEILING:
+        raise ValueError(f"max_rounds must be between 1 and {MAX_ROUNDS_CEILING:,}")
 
     names = make_names(players, config.get("names", "default"), random.Random(seed))
     game = WarGame(players, decks, player_names=names, seed=seed)
@@ -85,7 +155,7 @@ def run_simulation(config: dict) -> dict:
 
     # Stream rounds: harvest each round's events, then drop them so memory
     # stays bounded no matter how long the game runs.
-    while not game.is_over and game.round < MAX_ROUNDS:
+    while not game.is_over and game.round < max_rounds:
         round_events = game.play_round()
         for event in round_events:
             if isinstance(event, ev.RoundEnded):
@@ -102,6 +172,7 @@ def run_simulation(config: dict) -> dict:
         game.events.clear()
 
     response = {
+        "game": "war",
         "summary": game.summary(),
         "stats": {
             "wars": game.war_count,
@@ -122,9 +193,45 @@ def run_simulation(config: dict) -> dict:
 
 
 def run_batch_api(config: dict) -> dict:
+    if config.get("game") == "blackjack":
+        seats = int(config.get("players", 4))
+        decks = int(config.get("decks", 6))
+        rounds = int(config.get("rounds", 100))
+        games = int(config.get("games", 100))
+        strategies = config.get("strategies") or ["basic"]
+        seed = config.get("seed")
+        base_seed = int(seed) if seed not in (None, "") else random.randrange(1_000_000)
+        if not 1 <= seats <= MAX_PLAYERS:
+            raise ValueError(f"seats must be between 1 and {MAX_PLAYERS}")
+        if not 1 <= decks <= MAX_DECKS:
+            raise ValueError(f"decks must be between 1 and {MAX_DECKS}")
+        if not 1 <= rounds <= MAX_BJ_ROUNDS:
+            raise ValueError(f"rounds must be between 1 and {MAX_BJ_ROUNDS}")
+        if not 1 <= games <= MAX_BATCH_GAMES:
+            raise ValueError(f"games must be between 1 and {MAX_BATCH_GAMES}")
+        start_time = time.perf_counter()
+        rows = run_blackjack_batch(seats, decks, rounds, games, strategies,
+                                   base_seed=base_seed)
+        elapsed = time.perf_counter() - start_time
+        return {
+            "game": "blackjack",
+            "config": {
+                "players": seats,
+                "decks": decks,
+                "rounds": rounds,
+                "games": games,
+                "strategies": strategies,
+                "base_seed": base_seed,
+            },
+            "elapsed": elapsed,
+            "aggregate": summarize_blackjack_batch(rows),
+            "games": rows,
+        }
+
     players = int(config.get("players", 4))
     decks = int(config.get("decks", 1))
     games = int(config.get("games", 100))
+    max_rounds = int(config.get("max_rounds") or DEFAULT_MAX_ROUNDS)
     seed = config.get("seed")
     base_seed = int(seed) if seed not in (None, "") else random.randrange(1_000_000)
     if not 2 <= players <= MAX_PLAYERS:
@@ -133,17 +240,21 @@ def run_batch_api(config: dict) -> dict:
         raise ValueError(f"decks must be between 1 and {MAX_DECKS}")
     if not 1 <= games <= MAX_BATCH_GAMES:
         raise ValueError(f"games must be between 1 and {MAX_BATCH_GAMES}")
+    if not 1 <= max_rounds <= MAX_ROUNDS_CEILING:
+        raise ValueError(f"max_rounds must be between 1 and {MAX_ROUNDS_CEILING:,}")
 
     start_time = time.perf_counter()
-    rows = run_batch(players, decks, games, base_seed=base_seed, max_rounds=MAX_ROUNDS)
+    rows = run_batch(players, decks, games, base_seed=base_seed, max_rounds=max_rounds)
     elapsed = time.perf_counter() - start_time
     return {
+        "game": "war",
         "config": {
             "players": players,
             "decks": decks,
             "games": games,
             "base_seed": base_seed,
             "total_cards": decks * 52,
+            "max_rounds": max_rounds,
         },
         "elapsed": elapsed,
         "aggregate": summarize_batch(rows),

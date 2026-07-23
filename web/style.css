@@ -20,6 +20,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -140,6 +141,8 @@ main {
 }
 
 .note { color: var(--ink-2); }
+.note.warn { border-color: rgba(201, 133, 0, 0.55); color: #e5c894; }
+#maxRounds { width: 108px; }
 
 /* --- playback --- */
 .controls {
@@ -181,6 +184,7 @@ main {
   grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
   gap: 10px 8px;
 }
+.grid.bj { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
 .player { text-align: center; min-width: 0; }
 .player .pname {
   font-size: 11px;
@@ -288,6 +292,59 @@ main {
   color: var(--ink);
   font-weight: 600;
 }
+
+/* --- blackjack --- */
+.strat-wrap { display: flex; flex-direction: column; gap: 4px; }
+.strat-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.strat-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.strat-chips button {
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 11px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.strat-chips button.on { background: var(--s1); color: #fff; border-color: transparent; }
+
+.dealer-area {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.dealer-area .dlabel {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.dealer-area .hand-cards img { width: 52px; }
+.dealer-area .dtotal { font-size: 15px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+.hand-cards { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; min-height: 52px; }
+.hand-cards img { width: 38px; height: auto; border-radius: 3px; display: block; }
+
+.player .pstrat {
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player .outcome { font-weight: 600; }
+.player .outcome.o-win { color: var(--good); }
+.player .outcome.o-lose { color: #e66767; }
+.player .outcome.o-push { color: var(--muted); }
 
 /* --- batch charts & table --- */
 .chart-wrap { position: relative; height: 240px; }

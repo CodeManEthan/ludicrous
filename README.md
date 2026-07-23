@@ -1,14 +1,21 @@
 # War Card Game
 
-A simulation platform for the classic card game War. Configure a game with up
-to 100 players and 100 decks, simulate the entire thing in seconds, then play
-it back in the browser at any speed — scrub it like a video, watch wars
-unfold card by card, and see how the card counts evolved over time.
+A card game simulation platform. Configure a game — War with up to 100
+players and 100 decks, or multi-seat Blackjack with pluggable strategies —
+simulate the entire thing in seconds, then play it back in the browser at any
+speed: scrub it like a video, watch wars and blackjack hands unfold card by
+card, and chart how the game evolved.
 
 Built as a headless Python engine (no dependencies) with a web frontend.
 
 ## Features
 
+- **Two games** — War (pure luck, up to 100 players) and Blackjack (multi-seat
+  vs the dealer, S17, 3:2 blackjacks, doubling)
+- **Pluggable strategies** — assign hit/stand policies per blackjack seat
+  (basic strategy, hit-below-N, never-bust) and measure which actually wins:
+  the batch view charts EV per hand by strategy over hundreds of thousands of
+  hands
 - **2-100 players, 1-100 decks** — scale games far beyond what's physically playable
 - **Instant simulation** — hundreds of thousands of rounds per second; even a
   2,600-card game finishes in seconds
@@ -47,7 +54,9 @@ Simulate games without the browser:
 python3 simulate.py -p 100 -d 50 --seed 42      # 100 players, 50 decks, reproducible
 python3 simulate.py -p 6 -d 3 --json game.json  # save a recording (importable in the web UI)
 python3 simulate.py -p 4 --batch 1000 --seed 0  # 1,000-game batch statistics
-python3 simulate.py --verbose                   # print every round
+python3 simulate.py --game blackjack -p 4 --strategies basic,hit-below-17
+python3 simulate.py --game blackjack -p 5 --batch 200 --rounds 500 \
+    --strategies basic,never-bust               # compare strategy EVs over 500k hands
 ```
 
 ## Game Rules
@@ -78,7 +87,9 @@ war-card-game/
 ├── engine/                   # Headless game engine — see docs/ENGINE.md
 │   ├── cards.py              # Card primitives, deck building
 │   ├── events.py             # Event vocabulary (the recording format)
-│   └── war.py                # WarGame: rules, state, event emission
+│   ├── war.py                # WarGame: rules, state, event emission
+│   ├── blackjack.py          # BlackjackGame + strategies (basic, hit-below-N, …)
+│   └── batch.py              # Parallel batch simulation for both games
 ├── server.py                 # Web server (stdlib only) — python3 server.py
 ├── web/                      # Browser playback UI (HTML/CSS/JS, no build step)
 ├── simulate.py               # CLI simulator
@@ -115,7 +126,9 @@ final tkinter version is preserved in git history (tag point: the
 ## Future Ideas
 
 - [x] Batch statistics — run N seeds, chart the distribution of game lengths
-- [ ] More games, with player-selectable strategies
+- [x] Second game with player-selectable strategies (Blackjack)
+- [ ] Blackjack rule extensions: splitting, insurance, card-counting strategies
+- [ ] Go Fish — hidden information and memory-based strategies
 - [ ] Sound effects and card animations in playback
 - [ ] Network multiplayer / shared spectating
 

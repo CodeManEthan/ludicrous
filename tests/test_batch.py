@@ -65,6 +65,28 @@ class TestBatch(unittest.TestCase):
         self.assertEqual(agg["shortest"][0]["seed"], 0)
         self.assertEqual(agg["longest"][0]["seed"], 1)
 
+    def test_summarize_excludes_unfinished_from_distribution(self):
+        games = [
+            {"seed": 0, "completed": True, "rounds": 100, "winner": 1, "wars": 5, "deepest_war": 1, "biggest_pot": 10},
+            {"seed": 1, "completed": True, "rounds": 200, "winner": 2, "wars": 10, "deepest_war": 2, "biggest_pot": 20},
+            {"seed": 2, "completed": False, "rounds": 1_000_000, "winner": None, "wars": 900, "deepest_war": 6, "biggest_pot": 99},
+        ]
+        agg = summarize_batch(games)
+        self.assertEqual(agg["unfinished"], 1)
+        self.assertEqual(agg["completed"], 2)
+        # capped game excluded from the rounds distribution...
+        self.assertEqual(agg["rounds"]["max"], 200)
+        self.assertEqual(agg["rounds"]["mean"], 150)
+        self.assertEqual(agg["mean_wars"], 7.5)
+        # ...but still present in the outlier list and event-derived maxima
+        self.assertEqual(agg["longest"][0]["seed"], 2)
+        self.assertEqual(agg["deepest_war"], 6)
+
+    def test_batch_respects_max_rounds(self):
+        rows = run_batch(num_players=4, num_decks=2, num_games=6, base_seed=0, max_rounds=50)
+        self.assertTrue(all(g["rounds"] <= 50 for g in rows))
+        self.assertTrue(any(not g["completed"] for g in rows))
+
     def test_invalid_config_raises_before_spawning(self):
         with self.assertRaises(ValueError):
             run_batch(num_players=60, num_decks=1, num_games=5)

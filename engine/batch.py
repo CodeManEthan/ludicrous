@@ -11,7 +11,16 @@ from __future__ import annotations
 import statistics
 from concurrent.futures import ProcessPoolExecutor
 
+from .blackjack import BlackjackGame
 from .war import WarGame
+
+
+def _parallel(worker, args_list: list) -> list:
+    if len(args_list) == 1:
+        return [worker(args_list[0])]
+    with ProcessPoolExecutor() as pool:
+        chunk = max(1, len(args_list) // ((pool._max_workers or 1) * 8))
+        return list(pool.map(worker, args_list, chunksize=chunk))
 
 
 def _run_one(args: tuple[int, int, int, int]) -> dict:
@@ -44,16 +53,20 @@ def run_batch(
         (num_players, num_decks, seed, max_rounds)
         for seed in range(base_seed, base_seed + num_games)
     ]
-    if num_games == 1:
-        return [_run_one(args[0])]
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        chunk = max(1, num_games // ((pool._max_workers or 1) * 8))
-        return list(pool.map(_run_one, args, chunksize=chunk))
+    return _parallel(_run_one, args)
 
 
 def summarize_batch(games: list[dict]) -> dict:
-    """Aggregate statistics over run_batch() rows."""
-    rounds = [g["rounds"] for g in games]
+    """Aggregate statistics over run_batch() rows.
+
+    Games stopped by the max-rounds cap ("unfinished") are excluded from the
+    rounds distribution and wars-per-game — including capped values would
+    bias every statistic low. They still appear in the outlier lists (their
+    rows carry completed=False) and are counted in "unfinished".
+    """
+    finished = [g for g in games if g["completed"]]
+    distribution_source = finished or games  # all-unfinished edge case
+    rounds = [g["rounds"] for g in distribution_source]
     wins_by_seat: dict[int, int] = {}
     for g in games:
         if g["winner"] is not None:
@@ -61,7 +74,8 @@ def summarize_batch(games: list[dict]) -> dict:
     by_rounds = sorted(games, key=lambda g: g["rounds"])
     return {
         "games": len(games),
-        "completed": sum(1 for g in games if g["completed"]),
+        "completed": len(finished),
+        "unfinished": len(games) - len(finished),
         "rounds": {
             "min": min(rounds),
             "max": max(rounds),
@@ -69,10 +83,80 @@ def summarize_batch(games: list[dict]) -> dict:
             "median": statistics.median(rounds),
             "stdev": statistics.stdev(rounds) if len(rounds) > 1 else 0.0,
         },
-        "mean_wars": statistics.fmean(g["wars"] for g in games),
+        "mean_wars": statistics.fmean(g["wars"] for g in distribution_source),
         "deepest_war": max(g["deepest_war"] for g in games),
         "biggest_pot": max(g["biggest_pot"] for g in games),
         "wins_by_seat": wins_by_seat,
         "shortest": by_rounds[:5],
         "longest": by_rounds[-5:][::-1],
+    }
+
+
+# --------------------------------------------------------------- blackjack
+
+def _run_one_blackjack(args: tuple[int, int, int, tuple, int]) -> dict:
+    num_seats, num_decks, num_rounds, strategies, seed = args
+    game = BlackjackGame(num_seats, num_decks, num_rounds,
+                         strategies=list(strategies), seed=seed,
+                         record_events=False)
+    game.run()
+    return {
+        "seed": seed,
+        "net": round(sum(s.bankroll for s in game.seats.values()), 1),
+        "per_strategy": {
+            name: {"hands": entry["hands"], "net": entry["net"],
+                   "wins": 0}  # per-seat win detail lives in per-session replay
+            for name, entry in game.per_strategy().items()
+        },
+        "best_seat": round(max(s.bankroll for s in game.seats.values()), 1),
+        "worst_seat": round(min(s.bankroll for s in game.seats.values()), 1),
+    }
+
+
+def run_blackjack_batch(
+    num_seats: int,
+    num_decks: int,
+    num_rounds: int,
+    num_games: int,
+    strategies: list[str],
+    base_seed: int = 0,
+) -> list[dict]:
+    """Simulate num_games blackjack sessions; one summary row per session."""
+    BlackjackGame(num_seats, num_decks, num_rounds, strategies=strategies, seed=0)
+    args = [
+        (num_seats, num_decks, num_rounds, tuple(strategies), seed)
+        for seed in range(base_seed, base_seed + num_games)
+    ]
+    return _parallel(_run_one_blackjack, args)
+
+
+def summarize_blackjack_batch(sessions: list[dict]) -> dict:
+    """Aggregate statistics over run_blackjack_batch() rows."""
+    per_strategy: dict[str, dict] = {}
+    for session in sessions:
+        for name, entry in session["per_strategy"].items():
+            agg = per_strategy.setdefault(name, {"hands": 0, "net": 0.0})
+            agg["hands"] += entry["hands"]
+            agg["net"] += entry["net"]
+    for agg in per_strategy.values():
+        agg["net"] = round(agg["net"], 1)
+        agg["ev"] = agg["net"] / agg["hands"] if agg["hands"] else 0.0
+    nets = [s["net"] for s in sessions]
+    total_hands = sum(a["hands"] for a in per_strategy.values())
+    total_net = round(sum(a["net"] for a in per_strategy.values()), 1)
+    by_net = sorted(sessions, key=lambda s: s["net"])
+    return {
+        "games": len(sessions),
+        "hands": total_hands,
+        "net": total_net,
+        "ev": total_net / total_hands if total_hands else 0.0,
+        "per_strategy": per_strategy,
+        "session_net": {
+            "min": min(nets),
+            "max": max(nets),
+            "mean": statistics.fmean(nets),
+            "stdev": statistics.stdev(nets) if len(nets) > 1 else 0.0,
+        },
+        "worst": by_net[:5],
+        "best": by_net[-5:][::-1],
     }

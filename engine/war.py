@@ -188,6 +188,7 @@ class WarGame:
 
     def summary(self) -> dict:
         return {
+            "game": "war",
             "num_players": self.num_players,
             "num_decks": self.num_decks,
             "seed": self.seed,
