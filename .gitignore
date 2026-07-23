@@ -13,7 +13,6 @@ installers/
 
 # PyInstaller
 *.spec
-!app.spec
 
 # Logs
 *.log

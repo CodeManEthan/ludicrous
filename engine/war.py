@@ -4,8 +4,8 @@ No GUI imports are allowed in this package — it must stay runnable anywhere:
 CLI, tests, a web backend, or multiprocessing workers running thousands of
 simulations.
 
-Rules are ported from the original war_game_logic.py, including its five
-tiebreaker types:
+Rules are ported from the original tkinter app's war_game_logic.py (retired,
+preserved in git history), including its five tiebreaker types:
   Default          - at least two tied players have 4+ cards: each plays
                      3 face down + 1 face up; tied players with fewer than
                      4 cards forfeit their cards and are eliminated

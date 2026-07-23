@@ -72,12 +72,13 @@ Notes: cards serialize as `[rank, suit]` pairs; dict keys (player ids) become
 strings in JSON. `RoundEnded.card_counts` gives the frontend a free
 card-count-over-time series for charts.
 
-## Rules parity with the tkinter version
+## Rules parity with the retired tkinter version
 
-The rules are a faithful port of `war_game_logic.py`, including all five
-tiebreaker types (Default, Forfeit, Modified, Modified Forfeit, Draw),
-reserve-deck reshuffling, and even table splits on drawn wars. Two deliberate
-differences:
+The rules are a faithful port of the original tkinter app's
+`war_game_logic.py` (retired; preserved in git history at the "Snapshot:
+final tkinter version" commit), including all five tiebreaker types (Default,
+Forfeit, Modified, Modified Forfeit, Draw), reserve-deck reshuffling, and even
+table splits on drawn wars. Two deliberate differences:
 
 1. **All cards are dealt.** The GUI dropped remainder cards when the deck
    didn't divide evenly (e.g. 3 players, 52 cards → 1 card unused). The
