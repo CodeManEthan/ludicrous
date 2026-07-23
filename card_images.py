@@ -2,6 +2,13 @@ from PIL import Image, ImageTk
 from pathlib import Path
 from object_scaling import get_scaled_object_size
 from object_scaling import get_scaled_object_size_for_horizontal_fit
+from debug_output import (
+    debug_print_card_dimensions,
+    debug_print_adjusted_card_dimensions,
+    debug_print_card_images,
+    debug_print_card_back_images,
+    debug_print_card_not_found
+)
 
 """
 Card Images:
@@ -16,16 +23,10 @@ Card Back Images:
     
 
 def print_card_images(game):
-    for key, value in game.card_images.items():
-        # The key is a string like "Ace of Spades"
-        print(f"Card Name: {key}, Image Object: {value}") 
+    debug_print_card_images(game)
 
 def print_card_back_images(game):
-    print()
-    print("Card Back Images:")
-    for key, value in game.card_back_images.items():
-        print(f"Color: {key} -> Image: {value}")     
-    print()
+    debug_print_card_back_images(game)
 
 
 def find_card_image_path(game):
@@ -40,12 +41,11 @@ def find_card_image_path(game):
 def load_card_face_images(game):
     # Get width and height of card images based on display size
     card_width, card_height = get_scaled_object_size(game.display_width, game.display_height, 100, 140)
-    print("Scaled Card Width: " + str(card_width))
-    print("Scaled Card Height: " + str(card_height))
+    debug_print_card_dimensions(game)
+    
     # Get width and height of card images based on fitting 20 cards in a row
     game.card_width, game.card_height = get_scaled_object_size_for_horizontal_fit(20, card_width, card_height, 5, 20, game.display_width)
-    print("Adjusted Card Width: " + str(game.card_width))
-    print("Adjusted Card Height: " + str(game.card_height))
+    debug_print_adjusted_card_dimensions(game)
 
     # Define all possible suits and ranks
     suits = ["Hearts", "Diamonds", "Clubs", "Spades"]
@@ -68,7 +68,8 @@ def load_card_face_images(game):
                 # store resized image in card images dictionary
                 game.card_images[card_name] = ImageTk.PhotoImage(img)
             except FileNotFoundError:
-                print(f"Image not found: {filename}")
+                debug_print_card_not_found(game, filename)
+    
     # Print card images dictionary
     if game.is_terminal_active:
         print_card_images(game)
@@ -85,7 +86,8 @@ def load_card_back_images(game):
             img = img.resize((game.card_width, game.card_height), Image.Resampling.LANCZOS)
             game.card_back_images[color] = ImageTk.PhotoImage(img)
         except FileNotFoundError:
-            print(f"Image not found: {filename}")
+            debug_print_card_not_found(game, filename)
+    
     # Print card back images dictionary
     if game.is_terminal_active:
         print_card_back_images(game)                
@@ -95,4 +97,3 @@ def load_card_table_image(game):
     img = Image.open(filename)
     #img = img.resize(game.display_width, game.display_height), Image.Resampling.LANCZOS
     game.card_table_image = ImageTk.PhotoImage(img)
-        

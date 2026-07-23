@@ -1,0 +1,54 @@
+pyinstaller --onefile --noconsole --add-data "cards/*;cards" war_game_main.py 
+
+War Card Game
+    Determine number of players
+    Determine player names
+
+    Shuffle deck
+    Deal cards equally to each player (discard extra if necessary)
+
+    Play round
+        Each player plays top card from active deck on table
+        Highest card wins
+        If tie play tiebreaker
+            If player does not have enough cards to play tiebreaker then player loses
+            Each player who tied lays down 3 cards face down on table 
+            Each player who tied plays the 4th card
+            Highest card wins
+            If tie then repeat tiebreaker
+
+        winner places all cards on table into reserve deck
+        
+        If player has zero cards in active deck then 
+            shuffle reserve deck
+            make reserve deck the active deck
+
+        if player has no cards then player loses
+
+        if player has all cards then player wins & game over
+
+
+GUI:
+    Initialize:
+        Configure
+            Title
+            Geometry
+
+        Create Widgets:
+            result label
+                text= Welcome to War!
+            play button
+                text= Start Game
+
+            For Player 1, Player 2, Player 3, Player 4
+                player score label
+                player card label
+
+         Place widgets (based on number of players)
+
+     When play round:
+        Update result label
+        Update player score label (each player)
+        Update player card label (each player)
+        
+    

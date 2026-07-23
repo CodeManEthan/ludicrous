@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 from window_position import center_window
+from debug_output import debug_print_empty_function_call
 
 def create_rules_window(game):
     if not game.automation_active:
@@ -46,7 +47,7 @@ Tiebreaker Rules:
     receiving more than one extra card.
     """
 
-        print(game.game_rules)  # Debugging: Ensure the rules are loaded properly
+        debug_print_empty_function_call(game)
 
         # Create the text widget to display the rules
         text_widget = tk.Text(game.rules_window, wrap=tk.WORD, height=20, width=70)

@@ -1,3 +1,5 @@
+from debug_output import debug_print
+
 def get_scaled_object_size(display_width, display_height, object_width, object_height):
     """
     Returns scaled width and height for an object based on the display size.
@@ -145,6 +147,8 @@ def get_distance_from_object_to_window_top(window, object):
     # Calculate the distance from the bottom of the object to the top of the window
     distance = (object_y_screen + object_height) 
     
-    print(f"Distance from the bottom of the object to the top of the window: {distance} pixels")
+    # Note: debug_print needs a game object, so we can't use it here directly
+    # The print statement was likely for debugging during development
+    # print(f"Distance from the bottom of the object to the top of the window: {distance} pixels")
 
     return distance

@@ -7,11 +7,22 @@ from object_scaling import get_frame_size_for_objects_fit
 from object_scaling import get_distance_from_object_to_window_top
 from players import player_label_attr
 from players import player_attr
+from debug_output import (
+    debug_print_number_of_players,
+    debug_print_player_frame_height,
+    debug_print_player_frame_creation,
+    debug_print_players_labels,
+    debug_print_place_player_frames_start,
+    debug_print_player_frame_destroyed,
+    debug_print_table_frame_dimensions,
+    debug_print_place_frames_in_table,
+    debug_print_player_frame_placement,
+    debug_print_all_frames_placed
+)
 
 # Create player labels, place labels in player frame and store all in player labels dictionary
 def create_player_objects(game):
-    if game.is_terminal_active:
-        print(f"\nNumber of players: {game.number_players}")
+    debug_print_number_of_players(game)
 
     # Ensure that all pending layout updates are processed
     game.root.update_idletasks()
@@ -43,7 +54,7 @@ def create_player_objects(game):
     game.player_frame_height = get_scaled_object_height_for_vertical_fit(5, player_frame_height, 10, game.top_height, game.display_height)
     # Adjust the player frame height to include name label, score label and win label.
 
-    print("Player Frame Height: " + str(game.player_frame_height))
+    debug_print_player_frame_height(game)
 
     for i in range(1, game.number_players + 1):
         # Create player frame and labels
@@ -67,28 +78,16 @@ def create_player_objects(game):
         player_wins_label.place(relx=0.5, rely=0.95, anchor="center")
 
         # Print confirmation for each player
-        if game.is_terminal_active:
-            print(f"Added labels for player_{i}:")
-            print(f"  Frame: {game.players_labels[i]['frame']}")
-            print(f"  Name Label: {game.players_labels[i]['name']}")
-            print(f"  Card Label: {game.players_labels[i]['card']}")
-            print(f"  Score Label: {game.players_labels[i]['score']}")
-            print(f"  Wins Label: {game.players_labels[i]['wins']}")
+        debug_print_player_frame_creation(game, i)
     
     # Make root window fullscreen
     game.root.attributes('-fullscreen', True)
 
     # Print the entire players_labels dictionary for verification
-    if game.is_terminal_active:
-        print("\nUpdated Players Labels Dictionary:")
-        for player, labels in game.players_labels.items():
-            print(f"{player}: {labels}")
+    debug_print_players_labels(game)
 
 def place_player_frames(game):
-    print("\nPlace Player Frames:")
-    print("Remove player frames for players not in game:")
-    print(f"Players Out Of Game:")
-    print(game.players_out_game)
+    debug_print_place_player_frames_start(game)
 
     # Set index int for players out game list
     i = -1
@@ -102,7 +101,7 @@ def place_player_frames(game):
             player_frame = player_label_attr(game, player_number, 'frame')
             if player_frame.winfo_ismapped():
                 player_frame.destroy()
-                print(f"Player {player_number} frame destroyed.")
+                debug_print_player_frame_destroyed(game, player_number)
 
     # Remove player frames for players not in round
     for player_number in game.players_in_game:
@@ -138,17 +137,7 @@ def place_player_frames(game):
     # Calculate width and height for table frame
     game.table_frame_width, game.table_frame_height = get_frame_size_for_objects_fit(num_columns, num_rows, game.player_frame_height, game.player_frame_width, spacing, 20)
 
-    if game.is_terminal_active:
-        print("\nTable Frame Width: " + str(game.table_frame_width))
-        print("Table Frame Height: " + str(game.table_frame_height))
-        print("Player Frame Width: " + str(game.player_frame_width))
-        print("Player Frame Height: " + str(game.player_frame_height))
-        print("Number players in round: " + str(game.number_players_in_round))
-        print("Number players in game: " + str(game.number_players_in_game))
-        print("Number Columns: " + str(num_columns))
-        print("Number Rows: " + str(num_rows))
-        print("Max frames per row: " + str(max_frames_per_row))
-        print(f"Number Players In Round Divided By Max Frames Per Row: {math.ceil(game.number_players_in_round / max_frames_per_row)}")
+    debug_print_table_frame_dimensions(game, num_columns, num_rows, max_frames_per_row)
         
 
     # Adjust table frame width and height
@@ -166,10 +155,9 @@ def place_player_frames(game):
     # Set integer for number of label
     i = -1
 
-    print("\nPlace card labels in table frame: ")
+    debug_print_place_frames_in_table(game)
     # Place card labels in table frame dynamically
     for player_number in game.players_in_round: 
-        print(f"Player {player_number}")
         # Incease number of label by one for each iteration
         i += 1
 
@@ -198,12 +186,7 @@ def place_player_frames(game):
         player_frame.place(relx=relx_value, rely=rely_value, anchor="center")
 
         # Debugging output
-        if game.is_terminal_active:
-            print(f"Placed frame for {player_number}:")
-            print(f"  Frame Object: {game.players_labels[player_number]['frame']}")
-            print(f"  Relative X Position: {relx_value}")
-            print(f"  Relative Y Position: {rely_value}")
+        debug_print_player_frame_placement(game, player_number, relx_value, rely_value)
 
     # Print confirmation if all labels were placed
-    if game.is_terminal_active:
-        print("\nAll player frames have been placed.")
+    debug_print_all_frames_placed(game)

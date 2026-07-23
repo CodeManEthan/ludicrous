@@ -1,6 +1,13 @@
 import random
 import tkinter as tk
 from random_names import random_300_first_names
+from debug_output import (
+    debug_print_separator,
+    debug_print_players_data,
+    debug_print_players_labels,
+    debug_print_player_name_assignment,
+    debug_print_player_attributes
+)
 
 # Function to create player instances with dynamic decks
 def create_player_instances(game):
@@ -27,17 +34,10 @@ def create_player_instances(game):
             'frame': None,
         }
 
-    if game.is_terminal_active:
-        print()
-        # Print the dictionaries after creating all players
-        print("Players Data Dictionary:")
-        for key, value in game.players_data.items():
-            print(f"{key}: {value}")
-
-        print("\nPlayers Labels Dictionary:")
-        for key, value in game.players_labels.items():
-            print(f"{key}: {value}")
-        print()
+    debug_print_separator(game)
+    debug_print_players_data(game)
+    debug_print_players_labels(game)
+    debug_print_separator(game)
 
 # Get or assign player attribute
 def player_attr(game, player_number, attribute, value=None):
@@ -55,8 +55,7 @@ def player_label_attr(game, player_number, attribute, value=None):
 
 # Assign default names (Player 1, Player 2, etc.)
 def assign_default_player_names(game):
-    if game.is_terminal_active:
-        print()
+    debug_print_separator(game)
 
     for i in range(1, game.number_players + 1):
         player_number = i
@@ -69,20 +68,14 @@ def assign_default_player_names(game):
         player_attr(game, player_number, 'leaderboard_rank', player_number)
 
         # Print each player's key and assigned name
-        if game.is_terminal_active:
-            print(f"Assigned name to {player_number}: {player_name}")
+        debug_print_player_name_assignment(game, player_number, player_name)
     
     # Print the updated players_data dictionary for verification
-    if game.is_terminal_active:
-        print("\nUpdated Players Data Dictionary:")
-        for key, value in game.players_data.items():
-            print(f"{key}: {value}")
-    if game.is_terminal_active:
-        print()
+    debug_print_players_data(game)
+    debug_print_separator(game)
 
 def assign_random_player_names(game):
-    if game.is_terminal_active:
-        print()
+    debug_print_separator(game)
 
     game.random_names = random_300_first_names()
     random.shuffle(game.random_names)
@@ -98,16 +91,11 @@ def assign_random_player_names(game):
         player_attr(game, player_number, 'leaderboard_rank', player_number)
         
         # Print each player's key and assigned name
-        if game.is_terminal_active:
-            print(f"Assigned name to {player_number}: {player_name}")
+        debug_print_player_name_assignment(game, player_number, player_name)
 
     # Print the updated players_data dictionary for verification
-    if game.is_terminal_active:
-        print("\nUpdated Players Data Dictionary:")
-        for key, value in game.players_data.items():
-            print(f"{key}: {value}")
-    if game.is_terminal_active:
-        print()
+    debug_print_players_data(game)
+    debug_print_separator(game)
 
 # Generate random names for players
 def generate_random_names(game, names):
@@ -144,16 +132,11 @@ def assign_names_from_entries(game):
             player_attr(game, player_number, 'leaderboard_rank', player_number)
 
             # Print each player's key and assigned name
-            if game.is_terminal_active:
-                print(f"Assigned name to {player_number}: {player_name}")
+            debug_print_player_name_assignment(game, player_number, player_name)
 
         # Print the updated players_data dictionary for verification
-        if game.is_terminal_active:
-            print("\nUpdated Players Data Dictionary:")
-            for key, value in game.players_data.items():
-                print(f"{key}: {value}")
-        if game.is_terminal_active:
-            print()
+        debug_print_players_data(game)
+        debug_print_separator(game)
 
 
 # Example of accessing the deck for player 1
@@ -166,6 +149,4 @@ def assign_names_from_entries(game):
 
 
 def print_player_attributes(game, attribute):
-    print(f"Player : {attribute.capitalize()}")
-    for player_key, player_data in game.players_data.items():
-        print(f"{player_key}: {player_data[attribute]}")
+    debug_print_player_attributes(game, attribute)

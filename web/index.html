@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>War Simulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>WAR <span>simulator</span></h1>
+    <form id="setup">
+      <label>Players
+        <input id="players" type="number" min="2" max="100" value="6">
+      </label>
+      <label>Decks
+        <input id="decks" type="number" min="1" max="100" value="3">
+      </label>
+      <label>Names
+        <select id="nameMode">
+          <option value="random" selected>Random</option>
+          <option value="default">Player 1, 2, …</option>
+        </select>
+      </label>
+      <label>Seed
+        <input id="seed" type="text" inputmode="numeric" placeholder="random" size="9">
+      </label>
+      <button id="simulateBtn" class="btn primary" type="submit">Simulate</button>
+      <button id="importBtn" class="btn" type="button" title="Load a recording saved with simulate.py --json">Import…</button>
+      <input id="importFile" type="file" accept=".json,application/json" hidden>
+    </form>
+  </header>
+
+  <main id="results" hidden>
+    <section id="stats" class="stat-row"></section>
+
+    <section id="condensedNote" class="panel note" hidden></section>
+
+    <section id="playback" class="panel">
+      <div class="controls">
+        <button id="toStart" class="btn icon" title="Jump to start">⏮</button>
+        <button id="stepBack" class="btn icon" title="Step back one round">−1</button>
+        <button id="playBtn" class="btn icon primary" title="Play / pause (space)">▶</button>
+        <button id="stepFwd" class="btn icon" title="Step forward one round">+1</button>
+        <button id="toEnd" class="btn icon" title="Jump to end">⏭</button>
+        <label class="speed">Speed
+          <select id="speedSel">
+            <option value="1">1 rnd/s</option>
+            <option value="3">3 rnd/s</option>
+            <option value="10" selected>10 rnd/s</option>
+            <option value="30">30 rnd/s</option>
+            <option value="100">100 rnd/s</option>
+            <option value="300">300 rnd/s</option>
+            <option value="1000">1,000 rnd/s</option>
+            <option value="5000">5,000 rnd/s</option>
+          </select>
+        </label>
+        <input id="scrubber" type="range" min="0" max="1" value="0" step="1">
+        <span id="roundLabel" class="round-label">Round 0</span>
+        <label class="chk"><input id="pauseElim" type="checkbox" checked> pause on eliminations</label>
+      </div>
+      <div id="banner" class="banner">&nbsp;</div>
+    </section>
+
+    <section id="table" class="panel">
+      <div id="grid" class="grid"></div>
+    </section>
+
+    <section id="chartSection" class="panel">
+      <div class="section-title">Card counts over time <span class="hint" id="chartHint">— click the chart to seek</span></div>
+      <div id="chartWrap">
+        <canvas id="chart"></canvas>
+        <canvas id="overlay"></canvas>
+        <div id="tooltip" hidden></div>
+      </div>
+      <div id="legend" class="legend"></div>
+    </section>
+
+    <section id="elimSection" class="panel" hidden>
+      <div class="section-title">Elimination timeline</div>
+      <ol id="elimFeed" class="elim-feed"></ol>
+    </section>
+  </main>
+
+  <div id="welcome" class="welcome">
+    Configure a game and hit <b>Simulate</b> — the whole game runs instantly,
+    then you can play it back at any speed, scrub it like a video, and see how
+    the card counts evolved.
+  </div>
+
+  <div id="error" class="error" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

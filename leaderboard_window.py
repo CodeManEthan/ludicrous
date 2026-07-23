@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from players import player_attr
 from window_position import center_window
+from debug_output import debug_print_empty_function_call
 
 
 def determine_leaderboard_placements(game):
@@ -42,7 +43,7 @@ def click_close_button(game):
     game.root.focus_set()       
 
 def create_leaderboard_window(game):
-    print("Create Leaderboard Window:")
+    debug_print_empty_function_call(game)
     if not game.automation_active:
         game.leaderboard_window = tk.Toplevel()
         game.leaderboard_window.title("Leaderboard")
@@ -171,4 +172,3 @@ def create_leaderboard_window(game):
             rounds_label.place(relx=0.85, rely=0.5, anchor="center")
 
         game.leaderboard_window.mainloop()
-

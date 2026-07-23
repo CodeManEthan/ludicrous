@@ -19,37 +19,47 @@ A graphical implementation of the classic War card game built with Python and Tk
 
 ## Installation
 
-### Requirements
+### Option 1: Windows Installer
 
-- Python 3.7 or higher (includes tkinter on Windows/macOS)
-- Pillow (PIL) library
+Windows users can skip the Python setup entirely — run the installer in the
+`installers/` folder (`War Card Game Installer.exe`) and launch the game from
+the Start menu.
 
-**Linux users:** If you get a "No module named 'tkinter'" error, install it via:
+### Option 2: Run from Source
+
+#### Requirements
+
+- Python 3.7 or higher, with tkinter
+- [Pillow](https://pypi.org/project/Pillow/) (installed via `requirements.txt`)
+
+**Linux users:** tkinter is not always installed by default. If you get a
+"No module named 'tkinter'" error:
+
 ```bash
 # Fedora/RHEL
 sudo dnf install python3-tkinter
 
-# Debian/Ubuntu  
+# Debian/Ubuntu
 sudo apt install python3-tk
 
 # Arch
 sudo pacman -S tk
 ```
 
-### Setup
+#### Setup
 
 1. Clone or download this repository:
+
 ```bash
 git clone https://github.com/yourusername/war-card-game.git
-cd war-card-game/War_Card_Game_V3
+cd war-card-game
 ```
 
-2. **(Recommended)** Create a virtual environment:
+2. Create and activate a virtual environment (recommended):
+
 ```bash
-# Create virtual environment
 python3 -m venv venv
 
-# Activate virtual environment
 # On Linux/macOS:
 source venv/bin/activate
 
@@ -58,24 +68,50 @@ venv\Scripts\activate
 ```
 
 3. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-**Note:** When using a virtual environment, you'll need to activate it each time before running the game. To deactivate when done, simply run `deactivate`.
+> **Note (Fedora/RHEL):** If you skip the virtual environment and use the
+> system Pillow package, the game may fail with
+> `ImportError: cannot import name 'ImageTk'`. Either use the virtual
+> environment as shown above, or install the system package that provides
+> Pillow's tkinter support: `sudo dnf install python3-pillow-tk`.
 
 ## Usage
 
-### Running the Game
+### Web Simulator (new)
+
+Simulate entire games instantly, then play them back at any speed — scrub like
+a video, watch wars unfold, and see card counts charted over time:
 
 ```bash
-python3 war_game_main.py
+python3 server.py
+```
+
+Then open http://localhost:8000. Configure players (2-100), decks (1-100), and
+an optional seed (same seed = same game, reproducible and shareable). Games too
+long for card-by-card playback automatically show an aggregate view with the
+card-count chart and elimination timeline. You can also import recordings saved
+with `simulate.py --json`. No extra dependencies — standard library only.
+
+### Running the Game (tkinter)
+
+With your virtual environment activated:
+
+```bash
+python3 app.py
 ```
 
 On Windows:
+
 ```bash
-python war_game_main.py
+python app.py
 ```
+
+Remember to activate the virtual environment (`source venv/bin/activate`)
+each time you open a new terminal. Run `deactivate` when you're done.
 
 ### How to Play
 
@@ -126,8 +162,13 @@ When using multiple decks, identical cards are treated as equal rank. If two pla
 ## Project Structure
 
 ```
-War_Card_Game_V3/
-├── war_game_main.py          # Entry point
+war-card-game/
+├── app.py                    # Entry point — run this to start the game
+├── engine/                   # Headless game engine (no GUI) — see docs/ENGINE.md
+├── server.py                 # Web simulator server (python3 server.py)
+├── web/                      # Browser playback UI (HTML/CSS/JS, no build step)
+├── simulate.py               # CLI: simulate full games without the GUI
+├── tests/                    # Engine test suite
 ├── classes.py                # Game data model
 ├── war_game_gui.py           # Main window GUI
 ├── war_game_logic.py         # Game logic and rules
@@ -142,25 +183,41 @@ War_Card_Game_V3/
 ├── object_scaling.py         # UI scaling utilities
 ├── window_position.py        # Window positioning
 ├── debug.py                  # Testing utilities
+├── app.spec                  # PyInstaller build configuration
 ├── cards/                    # Card image assets
-│   ├── *.png                # 52 card images
-│   ├── card_back_*.png      # Card backs (6 colors)
+│   ├── *.png                 # 52 card images
+│   ├── card_back_*.png       # Card backs (6 colors)
 │   └── card_table_background.jpg
-├── docs/                     # Documentation
-│   ├── ARCHITECTURE.md
-│   ├── QUICK_FIX_PATH_BUG.md
-│   ├── UI_LAYOUT_GUIDE.md
-│   └── ANALYSIS_AND_RECOMMENDATIONS.md
+├── docs/                     # Documentation (architecture, UI guide, etc.)
+├── installers/               # Prebuilt Windows installer
 └── requirements.txt          # Python dependencies
 ```
 
 ## Development
 
+### Headless Simulation Engine
+
+The game logic lives in the standalone `engine/` package (no GUI dependency) —
+this powers the CLI simulator and will drive the upcoming web frontend.
+See [docs/ENGINE.md](docs/ENGINE.md) for the API and event format.
+
+Simulate full games from the command line:
+
+```bash
+python3 simulate.py -p 100 -d 50 --seed 42     # 100 players, 50 decks, reproducible
+python3 simulate.py -p 6 -d 3 --json game.json  # save a replayable recording
+```
+
+Run the engine test suite:
+
+```bash
+python3 -m unittest discover -v
+```
+
 ### Debug Mode
 
-Enable terminal output for debugging:
+Enable terminal output for debugging by editing the flags near the top of `app.py`:
 
-Edit `war_game_main.py`:
 ```python
 game.is_terminal_active = True  # Show debug output
 game.is_testing = True          # Use test values
@@ -175,15 +232,17 @@ from debug import set_values_for_testing
 set_values_for_testing(game)
 ```
 
-## Building Standalone Executable
+## Building a Standalone Executable
 
-The project includes a PyInstaller spec file for creating standalone executables:
+The project includes a PyInstaller spec file for creating a standalone executable:
 
 ```bash
-pyinstaller war_game_main.spec
+pip install pyinstaller
+pyinstaller app.spec
 ```
 
-The executable will be created in `dist/war_game_main/`.
+This builds `app.py` into a single-file executable at `dist/app`
+(`dist/app.exe` on Windows), with the card images bundled in.
 
 ## Known Issues
 
@@ -221,12 +280,6 @@ This project is open source and available under the MIT License.
 
 - Card images: [Source/Attribution]
 - Developed as a learning project
-
-## Contact
-
-Ethan - [Your contact info if you want to share]
-
-Project Link: [https://github.com/yourusername/war-card-game](https://github.com/yourusername/war-card-game)
 
 ---
 

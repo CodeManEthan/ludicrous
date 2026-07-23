@@ -13,6 +13,7 @@ from war_game_logic import decrease_speed
 from rules_window import create_rules_window
 from leaderboard_window import create_leaderboard_window
 from debug import set_values_2_for_testing
+from debug_output import debug_print_gui_setup_complete
 
 
 
@@ -115,8 +116,7 @@ def setup_war_game_gui(game):
     game.leaderboard_button.place(relx=0.85, rely=result_label_rely, anchor="center")
     game.leaderboard_button.configure(style=button_style_name)
 
-    if game.is_terminal_active:
-        print("Created & placed result label & play button in root window.")
+    debug_print_gui_setup_complete(game)
 
     # If for testing then add players to players in game list and players in round dictionary
     if game.is_application_active and game.is_testing:
@@ -133,5 +133,3 @@ def setup_war_game_gui(game):
 
     # Shuffle and split deck evenly amongst players
     shuffle_and_split_deck(game)
-
-    
