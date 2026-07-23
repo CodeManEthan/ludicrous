@@ -16,10 +16,11 @@ Run:  python3 server.py  [--port 8000]
 import argparse
 import json
 import random
+import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from engine import WarGame
+from engine import WarGame, run_batch, summarize_batch
 from engine import events as ev
 from random_names import random_300_first_names
 
@@ -30,6 +31,7 @@ CARDS_DIR = ROOT / "cards"
 MAX_PLAYERS = 100
 MAX_DECKS = 100
 MAX_ROUNDS = 1_000_000
+MAX_BATCH_GAMES = 10_000
 FULL_EVENT_BUDGET = 250_000  # events; ~25 MB of JSON is the ceiling for playback mode
 CHART_POINTS = 1200
 
@@ -79,8 +81,6 @@ def run_simulation(config: dict) -> dict:
     game.events.clear()
 
     eliminations = []
-    deepest_war = 0
-    biggest_pot = 0
     condensed = False
 
     # Stream rounds: harvest each round's events, then drop them so memory
@@ -91,10 +91,6 @@ def run_simulation(config: dict) -> dict:
             if isinstance(event, ev.RoundEnded):
                 for pid, count in event.card_counts.items():
                     counts_series[pid].append(count)
-            elif isinstance(event, ev.WarDeclared):
-                deepest_war = max(deepest_war, event.depth)
-            elif isinstance(event, ev.RoundWon):
-                biggest_pot = max(biggest_pot, event.cards_won)
             elif isinstance(event, ev.PlayerEliminated):
                 counts_series[event.player].append(0)  # let chart lines touch zero
                 eliminations.append({"round": event.round, "player": event.player})
@@ -109,8 +105,8 @@ def run_simulation(config: dict) -> dict:
         "summary": game.summary(),
         "stats": {
             "wars": game.war_count,
-            "deepest_war": deepest_war,
-            "biggest_pot": biggest_pot,
+            "deepest_war": game.deepest_war,
+            "biggest_pot": game.biggest_pot,
             "total_cards": decks * 52,
         },
         "names": {pid: p.name for pid, p in game.players.items()},
@@ -123,6 +119,36 @@ def run_simulation(config: dict) -> dict:
         response["mode"] = "full"
         response["events"] = full_events
     return response
+
+
+def run_batch_api(config: dict) -> dict:
+    players = int(config.get("players", 4))
+    decks = int(config.get("decks", 1))
+    games = int(config.get("games", 100))
+    seed = config.get("seed")
+    base_seed = int(seed) if seed not in (None, "") else random.randrange(1_000_000)
+    if not 2 <= players <= MAX_PLAYERS:
+        raise ValueError(f"players must be between 2 and {MAX_PLAYERS}")
+    if not 1 <= decks <= MAX_DECKS:
+        raise ValueError(f"decks must be between 1 and {MAX_DECKS}")
+    if not 1 <= games <= MAX_BATCH_GAMES:
+        raise ValueError(f"games must be between 1 and {MAX_BATCH_GAMES}")
+
+    start_time = time.perf_counter()
+    rows = run_batch(players, decks, games, base_seed=base_seed, max_rounds=MAX_ROUNDS)
+    elapsed = time.perf_counter() - start_time
+    return {
+        "config": {
+            "players": players,
+            "decks": decks,
+            "games": games,
+            "base_seed": base_seed,
+            "total_cards": decks * 52,
+        },
+        "elapsed": elapsed,
+        "aggregate": summarize_batch(rows),
+        "games": rows,
+    }
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -138,13 +164,15 @@ class Handler(SimpleHTTPRequestHandler):
         return super().translate_path(path)
 
     def do_POST(self):
-        if self.path != "/api/simulate":
+        routes = {"/api/simulate": run_simulation, "/api/batch": run_batch_api}
+        handler = routes.get(self.path)
+        if handler is None:
             self.send_error(404)
             return
         try:
             length = int(self.headers.get("Content-Length", 0))
             config = json.loads(self.rfile.read(length) or b"{}")
-            body = json.dumps(run_simulation(config)).encode()
+            body = json.dumps(handler(config)).encode()
             status = 200
         except (ValueError, TypeError, KeyError) as error:
             body = json.dumps({"error": str(error)}).encode()

@@ -11,6 +11,11 @@ const CHART_POINTS = 1200;
 
 let state = null;      // prepared recording (see prepare())
 let pendingRound = null; // round to jump to after load (from ?round= URL param)
+let mode = "single";   // "single" | "batch"
+let batchData = null;  // last /api/batch response
+
+const SINGLE_SECTIONS = ["#stats", "#condensedNote", "#playback", "#table", "#chartSection", "#elimSection"];
+const BATCH_SECTIONS = ["#batchStats", "#histSection", "#seatSection", "#outlierSection"];
 let current = -1;      // round currently rendered
 let pos = 0;           // playhead position (fractional rounds)
 let playing = false;
@@ -36,8 +41,40 @@ function showError(message) {
 
 // ------------------------------------------------------------ data loading
 
+function setMode(next) {
+  mode = next;
+  for (const button of $("#modeToggle").children) {
+    button.classList.toggle("active", button.dataset.mode === next);
+  }
+  const batch = next === "batch";
+  $("#gamesLabel").hidden = !batch;
+  $("#namesLabel").hidden = batch;
+  $("#importBtn").hidden = batch;
+  $("#seed").placeholder = batch ? "base seed" : "random";
+  $("#simulateBtn").textContent = batch ? "Run batch" : "Simulate";
+  showResults();
+}
+
+function showResults() {
+  const hasData = mode === "single" ? state !== null : batchData !== null;
+  $("#welcome").hidden = hasData;
+  $("#results").hidden = !hasData;
+  for (const sel of BATCH_SECTIONS) $(sel).hidden = mode !== "batch" || !batchData;
+  if (mode === "single" && state) {
+    const full = state.mode === "full";
+    $("#stats").hidden = false;
+    $("#playback").hidden = !full;
+    $("#table").hidden = !full;
+    $("#elimSection").hidden = full;
+    $("#condensedNote").hidden = full;
+  } else {
+    for (const sel of SINGLE_SECTIONS) $(sel).hidden = true;
+  }
+}
+
 async function simulate(event) {
   event.preventDefault();
+  if (mode === "batch") return runBatch();
   const button = $("#simulateBtn");
   button.disabled = true;
   button.textContent = "Simulating…";
@@ -184,13 +221,8 @@ function load(data) {
   pos = 0;
   winsCache = { round: -1, wins: {} };
 
-  $("#welcome").hidden = true;
-  $("#results").hidden = false;
   const full = state.mode === "full";
-  $("#playback").hidden = !full;
-  $("#table").hidden = !full;
-  $("#elimSection").hidden = full;
-  $("#condensedNote").hidden = full;
+  showResults();
   $("#chartHint").hidden = !full;
 
   renderStats();
@@ -534,6 +566,205 @@ function handleChartHover(event) {
   drawOverlay();
 }
 
+// ------------------------------------------------------------------ batch
+
+async function runBatch() {
+  const button = $("#simulateBtn");
+  button.disabled = true;
+  button.textContent = "Running batch…";
+  try {
+    const response = await fetch("/api/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        players: Number($("#players").value),
+        decks: Number($("#decks").value),
+        games: Number($("#games").value),
+        seed: $("#seed").value.trim(),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    batchData = data;
+    renderBatch();
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = mode === "batch" ? "Run batch" : "Simulate";
+  }
+}
+
+function renderBatch() {
+  showResults();
+  const { config, aggregate: agg, elapsed } = batchData;
+  const r = agg.rounds;
+  const tiles = [
+    ["Games", agg.completed === agg.games ? fmt.format(agg.games) : `${fmt.format(agg.completed)}/${fmt.format(agg.games)}`],
+    ["Mean rounds", `${fmt.format(Math.round(r.mean))} ±${fmt.format(Math.round(r.stdev))}`],
+    ["Median rounds", fmt.format(Math.round(r.median))],
+    ["Range", `${fmt.format(r.min)}–${fmt.format(r.max)}`],
+    ["Wars / game", fmt.format(Math.round(agg.mean_wars))],
+    ["Deepest war", `×${agg.deepest_war}`],
+    ["Biggest pot", `${fmt.format(agg.biggest_pot)} cards`],
+    [`Games / sec (${elapsed.toFixed(1)}s total)`, `${compact(Math.round(agg.games / elapsed))}/s`],
+    ["Base seed", String(config.base_seed)],
+  ];
+  $("#batchStats").innerHTML = tiles
+    .map(([label, value]) => `<div class="tile"><div class="label">${label}</div><div class="value" title="${value}">${value}</div></div>`)
+    .join("");
+  drawHistogram();
+  drawSeatChart();
+  renderOutliers();
+}
+
+function valueTicks(min, max, count) {
+  const span = Math.max(max - min, 1);
+  const step = Math.pow(10, Math.floor(Math.log10(span / count)));
+  const nice = [1, 2, 2.5, 5, 10].map((m) => m * step).find((s) => span / s <= count) || step * 10;
+  const ticks = [];
+  for (let v = Math.ceil(min / nice) * nice; v <= max; v += nice) ticks.push(v);
+  return ticks;
+}
+
+function drawBarAxes(ctx, width, height, pad, yMax) {
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.strokeStyle = "#2c2c2a";
+  ctx.fillStyle = "#898781";
+  ctx.lineWidth = 1;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  const y = (v) => pad.top + (1 - v / yMax) * (height - pad.top - pad.bottom);
+  for (const v of valueTicks(0, yMax, 4)) {
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y(v));
+    ctx.lineTo(width - pad.right, y(v));
+    ctx.stroke();
+    ctx.fillText(compact(v), pad.left - 6, y(v));
+  }
+  return y;
+}
+
+function histogramBins(values, maxBins = 40) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min === max) return [{ lo: min, hi: max + 1, count: values.length }];
+  const n = Math.min(maxBins, Math.max(8, Math.ceil(Math.sqrt(values.length))));
+  const width = (max - min) / n;
+  const bins = Array.from({ length: n }, (_, i) => ({ lo: min + i * width, hi: min + (i + 1) * width, count: 0 }));
+  for (const v of values) bins[Math.min(n - 1, Math.floor((v - min) / width))].count += 1;
+  return bins;
+}
+
+let histBins = null;
+
+function drawHistogram() {
+  const [ctx, width, height] = setupCanvas($("#hist"));
+  const values = batchData.games.map((g) => g.rounds);
+  histBins = histogramBins(values);
+  const pad = { left: 44, right: 12, top: 8, bottom: 22 };
+  const yMax = Math.max(...histBins.map((b) => b.count));
+  const y = drawBarAxes(ctx, width, height, pad, yMax);
+  const plotW = width - pad.left - pad.right;
+  const barW = plotW / histBins.length;
+  const gap = barW > 5 ? 2 : barW > 2 ? 1 : 0;
+
+  ctx.fillStyle = "#3987e5";
+  for (let i = 0; i < histBins.length; i++) {
+    const h = ((height - pad.top - pad.bottom) * histBins[i].count) / yMax;
+    if (h === 0) continue;
+    const x0 = pad.left + i * barW + gap / 2;
+    ctx.beginPath();
+    ctx.roundRect(x0, y(histBins[i].count), barW - gap, h, [Math.min(4, barW / 2), Math.min(4, barW / 2), 0, 0]);
+    ctx.fill();
+  }
+  // x-axis: round values across the bin range
+  ctx.fillStyle = "#898781";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  const lo = histBins[0].lo;
+  const hi = histBins[histBins.length - 1].hi;
+  for (const v of valueTicks(lo, hi, 6)) {
+    const px = pad.left + ((v - lo) / (hi - lo)) * plotW;
+    ctx.fillText(compact(Math.round(v)), px, height - pad.bottom + 6);
+  }
+}
+
+function drawSeatChart() {
+  const [ctx, width, height] = setupCanvas($("#seatChart"));
+  const seats = batchData.config.players;
+  const wins = Array.from({ length: seats }, (_, i) => batchData.aggregate.wins_by_seat[i + 1] || 0);
+  const expected = batchData.aggregate.completed / seats;
+  const pad = { left: 44, right: 12, top: 8, bottom: 22 };
+  const yMax = Math.max(Math.max(...wins), expected) * 1.1;
+  const y = drawBarAxes(ctx, width, height, pad, yMax);
+  const plotW = width - pad.left - pad.right;
+  const barW = plotW / seats;
+  const gap = barW > 5 ? 2 : barW > 2 ? 1 : 0;
+
+  ctx.fillStyle = "#3987e5";
+  for (let i = 0; i < seats; i++) {
+    if (wins[i] === 0) continue;
+    const h = ((height - pad.top - pad.bottom) * wins[i]) / yMax;
+    ctx.beginPath();
+    ctx.roundRect(pad.left + i * barW + gap / 2, y(wins[i]), barW - gap, h, [Math.min(4, barW / 2), Math.min(4, barW / 2), 0, 0]);
+    ctx.fill();
+  }
+  // expected-wins reference line
+  ctx.strokeStyle = "#898781";
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(pad.left, y(expected));
+  ctx.lineTo(width - pad.right, y(expected));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // x-axis: seat numbers, thinned when crowded
+  ctx.fillStyle = "#898781";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  const every = Math.ceil(seats / 15);
+  for (let i = 0; i < seats; i += every) {
+    ctx.fillText(String(i + 1), pad.left + (i + 0.5) * barW, height - pad.bottom + 6);
+  }
+}
+
+function barHover(event, wrap, tip, barCount, padLeft, padRight, content) {
+  const rect = wrap.getBoundingClientRect();
+  const px = event.clientX - rect.left;
+  const plotW = rect.width - padLeft - padRight;
+  const index = Math.floor(((px - padLeft) / plotW) * barCount);
+  if (index < 0 || index >= barCount) { tip.hidden = true; return; }
+  tip.innerHTML = content(index);
+  tip.hidden = false;
+  const flip = px > rect.width - 180;
+  tip.style.left = flip ? `${px - tip.offsetWidth - 12}px` : `${px + 12}px`;
+}
+
+function renderOutliers() {
+  const { shortest, longest } = batchData.aggregate;
+  const row = (game, type) => `
+    <tr>
+      <td class="otype">${type}</td>
+      <td>${game.seed}</td>
+      <td>${fmt.format(game.rounds)}</td>
+      <td>${fmt.format(game.wars)}</td>
+      <td>×${game.deepest_war}</td>
+      <td>${game.biggest_pot}</td>
+      <td>Seat ${game.winner ?? "—"}</td>
+      <td><button class="btn" data-replay="${game.seed}">Replay</button></td>
+    </tr>`;
+  $("#outlierRows").innerHTML =
+    shortest.map((g) => row(g, "shortest")).join("") +
+    longest.map((g) => row(g, "longest")).join("");
+}
+
+function replaySeed(seed) {
+  $("#seed").value = seed;
+  $("#nameMode").value = "default";
+  setMode("single");
+  $("#setup").requestSubmit();
+}
+
 // -------------------------------------------------------------- wire-up
 
 $("#setup").addEventListener("submit", simulate);
@@ -570,16 +801,55 @@ document.addEventListener("keydown", (event) => {
   if (event.code === "ArrowLeft") { pause(); seek(current - 1); }
 });
 
-window.addEventListener("resize", () => { if (state) drawChart(); });
+$("#modeToggle").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-mode]");
+  if (button) setMode(button.dataset.mode);
+});
+
+$("#outlierRows").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-replay]");
+  if (button) replaySeed(Number(button.dataset.replay));
+});
+
+$("#histWrap").addEventListener("mousemove", (event) => {
+  if (!batchData || !histBins) return;
+  barHover(event, $("#histWrap"), $("#histTip"), histBins.length, 44, 12, (i) => {
+    const bin = histBins[i];
+    const pct = ((100 * bin.count) / batchData.aggregate.games).toFixed(1);
+    return `<div class="t-label">${fmt.format(Math.round(bin.lo))}–${fmt.format(Math.round(bin.hi))} rounds</div>` +
+           `<div><span class="t-val">${fmt.format(bin.count)}</span> games (${pct}%)</div>`;
+  });
+});
+$("#histWrap").addEventListener("mouseleave", () => { $("#histTip").hidden = true; });
+
+$("#seatWrap").addEventListener("mousemove", (event) => {
+  if (!batchData) return;
+  const seats = batchData.config.players;
+  barHover(event, $("#seatWrap"), $("#seatTip"), seats, 44, 12, (i) => {
+    const wins = batchData.aggregate.wins_by_seat[i + 1] || 0;
+    const pct = ((100 * wins) / Math.max(batchData.aggregate.completed, 1)).toFixed(1);
+    return `<div class="t-label">Seat ${i + 1}</div>` +
+           `<div><span class="t-val">${fmt.format(wins)}</span> wins (${pct}%)</div>`;
+  });
+});
+$("#seatWrap").addEventListener("mouseleave", () => { $("#seatTip").hidden = true; });
+
+window.addEventListener("resize", () => {
+  if (mode === "single" && state) drawChart();
+  if (mode === "batch" && batchData) { drawHistogram(); drawSeatChart(); }
+});
 
 // URL parameters: prefill the form, optionally auto-run and jump to a round.
 // e.g. /?players=6&decks=3&seed=1&names=random&run=1&round=42
+//      /?mode=batch&players=4&decks=1&games=1000&seed=0&run=1
 (function initFromUrl() {
   const params = new URLSearchParams(location.search);
   if (params.has("players")) $("#players").value = params.get("players");
   if (params.has("decks")) $("#decks").value = params.get("decks");
+  if (params.has("games")) $("#games").value = params.get("games");
   if (params.has("seed")) $("#seed").value = params.get("seed");
   if (params.has("names")) $("#nameMode").value = params.get("names");
   if (params.has("round")) pendingRound = Number(params.get("round"));
+  if (params.get("mode") === "batch") setMode("batch");
   if (params.get("run") === "1") $("#setup").requestSubmit();
 })();

@@ -10,13 +10,20 @@
   <header>
     <h1>WAR <span>simulator</span></h1>
     <form id="setup">
+      <div class="mode-toggle" id="modeToggle">
+        <button type="button" data-mode="single" class="active">Single game</button>
+        <button type="button" data-mode="batch">Batch</button>
+      </div>
       <label>Players
         <input id="players" type="number" min="2" max="100" value="6">
       </label>
       <label>Decks
         <input id="decks" type="number" min="1" max="100" value="3">
       </label>
-      <label>Names
+      <label id="gamesLabel" hidden>Games
+        <input id="games" type="number" min="1" max="10000" value="1000">
+      </label>
+      <label id="namesLabel">Names
         <select id="nameMode">
           <option value="random" selected>Random</option>
           <option value="default">Player 1, 2, …</option>
@@ -79,6 +86,34 @@
     <section id="elimSection" class="panel" hidden>
       <div class="section-title">Elimination timeline</div>
       <ol id="elimFeed" class="elim-feed"></ol>
+    </section>
+
+    <section id="batchStats" class="stat-row" hidden></section>
+
+    <section id="histSection" class="panel" hidden>
+      <div class="section-title">Game length distribution</div>
+      <div id="histWrap" class="chart-wrap">
+        <canvas id="hist"></canvas>
+        <div id="histTip" class="tip" hidden></div>
+      </div>
+    </section>
+
+    <section id="seatSection" class="panel" hidden>
+      <div class="section-title">Wins by seat <span class="hint">— dashed line = expected under pure luck</span></div>
+      <div id="seatWrap" class="chart-wrap">
+        <canvas id="seatChart"></canvas>
+        <div id="seatTip" class="tip" hidden></div>
+      </div>
+    </section>
+
+    <section id="outlierSection" class="panel" hidden>
+      <div class="section-title">Outlier games <span class="hint">— replay any of them card by card</span></div>
+      <table class="outliers">
+        <thead>
+          <tr><th></th><th>Seed</th><th>Rounds</th><th>Wars</th><th>Deepest</th><th>Biggest pot</th><th>Winner</th><th></th></tr>
+        </thead>
+        <tbody id="outlierRows"></tbody>
+      </table>
     </section>
   </main>
 

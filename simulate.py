@@ -11,7 +11,7 @@ import json
 import random
 import time
 
-from engine import WarGame
+from engine import WarGame, run_batch, summarize_batch
 from engine import events as ev
 from random_names import random_300_first_names
 
@@ -35,9 +35,14 @@ def main():
     parser.add_argument("--random-names", action="store_true", help="use random player names")
     parser.add_argument("--verbose", action="store_true", help="print every round")
     parser.add_argument("--json", metavar="PATH", help="write the full game recording (events) as JSON")
+    parser.add_argument("--batch", type=int, metavar="N", help="simulate N games in parallel and print statistics")
     args = parser.parse_args()
 
     seed = args.seed if args.seed is not None else random.randrange(1_000_000_000)
+
+    if args.batch:
+        run_batch_cli(args, seed)
+        return
     names = build_names(args.players, seed) if args.random_names else None
 
     game = WarGame(args.players, args.decks, player_names=names, seed=seed)
@@ -85,6 +90,33 @@ def main():
         with open(args.json, "w") as f:
             json.dump(recording, f)
         print(f"Recording written to {args.json} ({len(game.events):,} events)")
+
+
+def run_batch_cli(args, base_seed):
+    print(f"War batch — {args.batch:,} games of {args.players} players, "
+          f"{args.decks} deck(s), seeds {base_seed}..{base_seed + args.batch - 1}")
+    start_time = time.perf_counter()
+    rows = run_batch(args.players, args.decks, args.batch,
+                     base_seed=base_seed, max_rounds=args.max_rounds)
+    elapsed = time.perf_counter() - start_time
+    agg = summarize_batch(rows)
+    r = agg["rounds"]
+    print(f"Completed {agg['completed']:,}/{agg['games']:,} games in {elapsed:.2f}s "
+          f"({agg['games'] / elapsed:,.0f} games/s)")
+    print(f"Rounds: mean {r['mean']:,.0f}  median {r['median']:,.0f}  "
+          f"stdev {r['stdev']:,.0f}  range {r['min']:,}-{r['max']:,}")
+    print(f"Wars/game: {agg['mean_wars']:,.1f}  |  deepest war: {agg['deepest_war']}  "
+          f"|  biggest pot: {agg['biggest_pot']} cards")
+    print("Wins by seat: " + "  ".join(
+        f"{seat}:{wins}" for seat, wins in sorted(agg["wins_by_seat"].items())))
+    print("Shortest games: " + "  ".join(
+        f"{g['rounds']:,} (seed {g['seed']})" for g in agg["shortest"][:3]))
+    print("Longest games:  " + "  ".join(
+        f"{g['rounds']:,} (seed {g['seed']})" for g in agg["longest"][:3]))
+    if args.json:
+        with open(args.json, "w") as f:
+            json.dump({"config": vars(args), "aggregate": agg, "games": rows}, f)
+        print(f"Batch results written to {args.json}")
 
 
 if __name__ == "__main__":

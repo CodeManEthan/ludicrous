@@ -52,6 +52,7 @@ class WarGame:
         num_decks: int = 1,
         player_names: list[str] | None = None,
         seed: int | None = None,
+        record_events: bool = True,
     ):
         if num_players < 2:
             raise ValueError("War needs at least 2 players")
@@ -75,8 +76,11 @@ class WarGame:
         }
         self.table: list[Card] = []
         self.events: list[ev.Event] = []
+        self.record_events = record_events  # False: skip the event log (fast batch mode)
         self.round = 0
         self.war_count = 0
+        self.deepest_war = 0
+        self.biggest_pot = 0
         self.winner: int | None = None
         self.is_over = False
         self._started = False
@@ -132,6 +136,7 @@ class WarGame:
 
         if winner is not None:
             pot = len(self.table)
+            self.biggest_pot = max(self.biggest_pot, pot)
             winning_player = self.players[winner]
             winning_player.reserve.extend(self.table)
             self.table.clear()
@@ -189,6 +194,8 @@ class WarGame:
             "completed": self.is_over,
             "rounds": self.round,
             "wars": self.war_count,
+            "deepest_war": self.deepest_war,
+            "biggest_pot": self.biggest_pot,
             "winner": self.winner,
             "winner_name": self.players[self.winner].name if self.winner else None,
             "standings": self.standings(),
@@ -197,7 +204,8 @@ class WarGame:
     # -------------------------------------------------------------- internals
 
     def _emit(self, event: ev.Event) -> None:
-        self.events.append(event)
+        if self.record_events:
+            self.events.append(event)
 
     def _draw(self, pid: int) -> Card:
         player = self.players[pid]
@@ -248,6 +256,7 @@ class WarGame:
 
             depth += 1
             self.war_count += 1
+            self.deepest_war = max(self.deepest_war, depth)
             tiebreaker = self._tiebreaker_type(contenders)
             self._emit(
                 ev.WarDeclared(

@@ -18,6 +18,9 @@ Built as a headless Python engine (no dependencies) with a web frontend.
   round winners highlighted, eliminated players dimmed with final placements
 - **Card-count chart** — the shape of the whole game at a glance; hover for
   values, click to jump to any round
+- **Batch statistics** — run thousands of games in parallel across CPU cores;
+  histogram of game lengths, wins by seat, and outlier games you can replay
+  card by card from their seed
 - **Reproducible games** — seeded RNG: the same seed always produces the same
   game, shareable via URL (`/?players=6&decks=3&seed=1&run=1`)
 - **Recordings** — save games as JSON from the CLI and import them in the browser
@@ -43,6 +46,7 @@ Simulate games without the browser:
 ```bash
 python3 simulate.py -p 100 -d 50 --seed 42      # 100 players, 50 decks, reproducible
 python3 simulate.py -p 6 -d 3 --json game.json  # save a recording (importable in the web UI)
+python3 simulate.py -p 4 --batch 1000 --seed 0  # 1,000-game batch statistics
 python3 simulate.py --verbose                   # print every round
 ```
 
@@ -110,7 +114,7 @@ final tkinter version is preserved in git history (tag point: the
 
 ## Future Ideas
 
-- [ ] Batch statistics — run N seeds, chart the distribution of game lengths
+- [x] Batch statistics — run N seeds, chart the distribution of game lengths
 - [ ] More games, with player-selectable strategies
 - [ ] Sound effects and card animations in playback
 - [ ] Network multiplayer / shared spectating

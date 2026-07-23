@@ -9,10 +9,11 @@ speed without re-running the simulation.
 
 ```
 engine/
-├── __init__.py    # public exports: WarGame, Card, build_shoe, events
+├── __init__.py    # public exports: WarGame, Card, build_shoe, events, run_batch
 ├── cards.py       # Card (rank, suit), deck/shoe building
 ├── events.py      # event dataclasses (the recording format)
-└── war.py         # WarGame: rules, state, event emission
+├── war.py         # WarGame: rules, state, event emission
+└── batch.py       # run_batch/summarize_batch: parallel simulation + aggregation
 ```
 
 ## Usage
@@ -37,8 +38,21 @@ CLI harness:
 ```bash
 python3 simulate.py -p 100 -d 50 --seed 42 --random-names
 python3 simulate.py -p 6 -d 3 --json recording.json   # save a recording
+python3 simulate.py -p 4 --batch 1000 --seed 0        # 1,000-game statistics
 python3 -m unittest discover        # run the engine test suite
 ```
+
+## Batch simulation
+
+`run_batch(players, decks, games, base_seed)` fans games out across CPU cores
+with `ProcessPoolExecutor`, one summary row per game. Games are seeded
+`base_seed .. base_seed+N-1`, so every batch is reproducible and any game in
+it can be replayed individually from its seed. Workers run with
+`WarGame(..., record_events=False)`: the event log is skipped entirely (the
+`deepest_war` / `biggest_pot` stats are tracked inline on the game object),
+which keeps workers fast and memory-flat. `summarize_batch(rows)` aggregates:
+round distribution (min/max/mean/median/stdev), wins by seat, war stats, and
+the shortest/longest games with their seeds.
 
 ## Event vocabulary
 
