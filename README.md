@@ -1,10 +1,14 @@
-# War Card Game
+# Ludicrous
 
-A card game simulation platform. Configure a game — War with up to 100
-players and 100 decks, or multi-seat Blackjack with pluggable strategies —
-simulate the entire thing in seconds, then play it back in the browser at any
-speed: scrub it like a video, watch wars and blackjack hands unfold card by
+Games at impossible scale. Take a game meant for a kitchen table — War,
+Blackjack, more to come — and expand it far beyond what could ever be played
+in real life: 100 players, 100 decks, a million rounds, thousands of games in
+parallel. Simulate the entire thing in seconds, then play it back in the
+browser at any speed: scrub it like a video, watch rounds unfold card by
 card, and chart how the game evolved.
+
+The name is the point: *ludicrous* descends from Latin *ludus* — game — so it
+means both "of games" and "absurdly extreme." Both senses apply.
 
 Built as a headless Python engine (no dependencies) with a web frontend.
 
@@ -39,8 +43,8 @@ Built as a headless Python engine (no dependencies) with a web frontend.
 Requires Python 3.10+ — nothing else. No packages to install.
 
 ```bash
-git clone https://github.com/yourusername/war-card-game.git
-cd war-card-game
+git clone https://github.com/yourusername/ludicrous.git
+cd ludicrous
 python3 server.py
 ```
 
@@ -83,7 +87,7 @@ different decks go to War like any other tie.
 ## Project Structure
 
 ```
-war-card-game/
+ludicrous/
 ├── engine/                   # Headless game engine — see docs/ENGINE.md
 │   ├── cards.py              # Card primitives, deck building
 │   ├── events.py             # Event vocabulary (the recording format)
@@ -117,11 +121,13 @@ python3 -m unittest discover -v
 
 ## History
 
-This project began as a tkinter desktop app (my first Python GUI project). In
-July 2026 it was rebuilt around a headless engine with a web frontend; the
-final tkinter version is preserved in git history (tag point: the
-"Snapshot: final tkinter version" commit) and its docs live in
-`docs/archive/`.
+This project began as a tkinter desktop app simulating the card game War (my
+first Python GUI project). In July 2026 it was rebuilt around a headless
+engine with a web frontend; the final tkinter version is preserved in git
+history (tag point: the "Snapshot: final tkinter version" commit) and its
+docs live in `docs/archive/`. Once Blackjack joined and more games were
+planned, "war-card-game" no longer fit — the project was renamed
+**Ludicrous**.
 
 ## Future Ideas
 

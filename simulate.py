@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Simulate a full game of War from the command line — no GUI required.
+"""Ludicrous CLI — simulate games (War, Blackjack) from the command line.
 
 Examples:
-    python3 simulate.py                          # 4 players, 1 deck
+    python3 simulate.py                          # 4 players, 1 deck of War
     python3 simulate.py -p 100 -d 50 --seed 42   # big reproducible game
     python3 simulate.py -p 6 -d 3 --json game.json   # save a recording
+    python3 simulate.py --game blackjack -p 4 --strategies basic,never-bust
 """
 import argparse
 import json

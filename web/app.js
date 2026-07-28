@@ -1,4 +1,4 @@
-/* War Simulator — playback UI over engine recordings. No dependencies. */
+/* Ludicrous — playback UI over engine recordings. No dependencies. */
 "use strict";
 
 const $ = (sel) => document.querySelector(sel);

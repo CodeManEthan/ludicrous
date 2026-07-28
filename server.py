@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local web server for the War simulator.
+"""Local web server for Ludicrous.
 
 Serves the browser UI from web/, card images from cards/, and a single API
 endpoint:
@@ -296,12 +296,12 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="War simulator web server")
+    parser = argparse.ArgumentParser(description="Ludicrous web server")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"War simulator running at http://localhost:{args.port}  (Ctrl+C to stop)")
+    print(f"Ludicrous running at http://localhost:{args.port}  (Ctrl+C to stop)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
