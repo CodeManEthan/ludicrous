@@ -9,7 +9,7 @@ import unittest
 
 from engine import events as ev
 from engine.blackjack import (
-    DOUBLE, HIT, STAND, BasicStrategy, BlackjackGame, hand_value,
+    DOUBLE, HIT, SPLIT, STAND, BasicStrategy, BlackjackGame, hand_value,
 )
 from engine.cards import Card
 
@@ -114,7 +114,104 @@ class TestRounds(unittest.TestCase):
             self.assertEqual(seat.hands, 50)
 
 
+class TestSplitting(unittest.TestCase):
+    def test_split_eights_then_double(self):
+        # 8,8 v 6: split. Hand 0 draws 2 (10 v 6: double, draws 9 = 19);
+        # hand 1 draws 10 (18: stand). Dealer 16 draws 10 and busts.
+        game = rigged(
+            [C(8), C(6, "Diamonds"), C(8, "Hearts"), C(10, "Clubs"),
+             C(2), C(9), C(10, "Hearts"), C(10, "Diamonds")]
+        )
+        game.play_round()
+        splits = [e for e in game.events if isinstance(e, ev.HandSplit)]
+        self.assertEqual([(s.hand, s.new_hand) for s in splits], [(0, 1)])
+        self.assertEqual(game.seats[1].splits, 1)
+        res = results(game)
+        self.assertEqual([r.hand for r in res], [0, 1])
+        self.assertEqual([r.outcome for r in res], ["win", "win"])
+        self.assertEqual([r.payout for r in res], [2.0, 1.0])  # hand 0 doubled
+        self.assertEqual(game.seats[1].bankroll, 3.0)
+        self.assertEqual(game.seats[1].wins, 2)
+        self.assertEqual(game.seats[1].hands, 1)  # EV denominator: original hands
+
+    def test_split_aces_get_one_card_and_no_blackjack_bonus(self):
+        # A,A v 10: split. Each ace gets exactly one card, no further play:
+        # hand 0 lands soft 16 (forced stand), hand 1 lands 21 — worth +1,
+        # not the 3:2 blackjack payout. Dealer stands on 18.
+        game = rigged(
+            [C(14), C(10, "Diamonds"), C(14, "Hearts"), C(8, "Clubs"),
+             C(5), C(10, "Hearts")]
+        )
+        game.play_round()
+        self.assertEqual(game.seats[1].splits, 1)
+        # both hands auto-played: no hit/stand/double decisions were made
+        self.assertEqual([e for e in game.events if isinstance(e, ev.SeatAction)], [])
+        res = results(game)
+        self.assertEqual([r.outcome for r in res], ["lose", "win"])
+        self.assertEqual([r.player_total for r in res], [16, 21])
+        self.assertEqual(res[1].payout, 1.0)  # split 21 is not a blackjack
+        self.assertEqual(game.seats[1].bankroll, 0.0)
+        self.assertEqual(game.seats[1].blackjacks, 0)
+
+    def test_resplit_capped_at_four_hands(self):
+        # A stream of 8s: 8,8 v 6 resplits until the 4-hand cap, then each
+        # 16 stands. Dealer 16 draws an 8 and busts; all four hands win.
+        eights = [C(8, s) for s in
+                  ("Hearts", "Clubs", "Diamonds", "Spades", "Hearts", "Clubs", "Diamonds")]
+        game = rigged([C(8), C(6, "Diamonds"), C(8, "Hearts"), C(10, "Clubs")] + eights)
+        game.play_round()
+        self.assertEqual(game.seats[1].splits, 3)
+        res = results(game)
+        self.assertEqual([r.hand for r in res], [0, 1, 2, 3])
+        self.assertEqual([r.outcome for r in res], ["win"] * 4)
+        self.assertEqual(game.seats[1].bankroll, 4.0)
+
+    def test_illegal_split_falls_back_to_strategy_line(self):
+        # A strategy that answers "split" no matter what must not loop or be
+        # forced into hitting: the engine re-asks without the split option
+        # and, if it still insists, stands the hand.
+        class AlwaysSplit:
+            def decide(self, hand, dealer_up, can_double, can_split=False):
+                return "split"
+
+        game = rigged([C(10, "Hearts"), C(7, "Diamonds"), C(9, "Clubs"),
+                       C(10, "Diamonds")])
+        game.seats[1].strategy = AlwaysSplit()
+        game.play_round()  # 10,9: no pair, so can_split is never offered
+        actions = [e.action for e in game.events if isinstance(e, ev.SeatAction)]
+        self.assertEqual(actions, [STAND])
+        self.assertEqual(results(game)[0].outcome, "win")  # 19 v dealer 17
+
+    def test_bankroll_still_sums_payouts_with_splits(self):
+        game = BlackjackGame(3, 6, num_rounds=300, strategies=["basic"], seed=7)
+        game.run()
+        total_splits = sum(s.splits for s in game.seats.values())
+        self.assertGreater(total_splits, 0)  # seed 7 must actually exercise splits
+        for seat in game.seats.values():
+            payouts = sum(e.payout for e in results(game) if e.seat == seat.id)
+            self.assertAlmostEqual(seat.bankroll, payouts)
+            self.assertEqual(seat.hands, 300)
+
+
 class TestBasicStrategy(unittest.TestCase):
+    def test_pair_chart_spot_checks(self):
+        s = BasicStrategy()
+        pair = lambda r: [C(r, "Hearts"), C(r, "Clubs")]
+        self.assertEqual(s.decide(pair(14), 10, True, True), SPLIT)  # A,A always
+        self.assertEqual(s.decide(pair(8), 10, True, True), SPLIT)   # 8,8 always
+        self.assertEqual(s.decide(pair(8), 10, True, False), HIT)    # no split -> 16 v 10
+        self.assertEqual(s.decide(pair(10), 6, True, True), STAND)   # never split 10s
+        self.assertEqual(s.decide(pair(9), 6, True, True), SPLIT)    # 9,9 v 6
+        self.assertEqual(s.decide(pair(9), 7, True, True), STAND)    # 9,9 v 7: stand 18
+        self.assertEqual(s.decide(pair(7), 7, True, True), SPLIT)    # 7,7 v 7
+        self.assertEqual(s.decide(pair(7), 8, True, True), HIT)      # 7,7 v 8
+        self.assertEqual(s.decide(pair(6), 2, True, True), SPLIT)    # 6,6 v 2 (DAS)
+        self.assertEqual(s.decide(pair(6), 7, True, True), HIT)      # 6,6 v 7
+        self.assertEqual(s.decide(pair(5), 6, True, True), DOUBLE)   # 5,5 = a 10
+        self.assertEqual(s.decide(pair(4), 5, True, True), SPLIT)    # 4,4 v 5 (DAS)
+        self.assertEqual(s.decide(pair(4), 2, True, True), HIT)      # 4,4 v 2
+        self.assertEqual(s.decide(pair(2), 7, True, True), SPLIT)    # 2,2 v 7 (DAS)
+        self.assertEqual(s.decide(pair(2), 8, True, True), HIT)      # 2,2 v 8
     def test_chart_spot_checks(self):
         s = BasicStrategy()
         hard = lambda a, b: [C(a, "Hearts"), C(b, "Clubs")]

@@ -127,7 +127,7 @@ def run_blackjack_cli(args, seed):
         print(f"  {seat['name']:<8} {seat['strategy']:<14} "
               f"{seat['bankroll']:>+8.1f} units  "
               f"({seat['wins']}W {seat['losses']}L {seat['pushes']}P, "
-              f"{seat['blackjacks']} BJ)")
+              f"{seat['blackjacks']} BJ, {seat['splits']} splits)")
     print("Per strategy:")
     for name, entry in sorted(summary["per_strategy"].items(), key=lambda kv: -kv[1]["ev"]):
         print(f"  {name:<14} {entry['net']:>+8.1f} units over {entry['hands']:,} hands "

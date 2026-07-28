@@ -4,17 +4,20 @@ Rules (documented so measured edges are interpretable):
 - Dealer stands on all 17s (S17), blackjack pays 3:2, dealer peeks for
   blackjack when showing an ace or ten-value card.
 - Players may hit, stand, or double (double = double the bet, take exactly
-  one card) on their first two cards. No splitting, insurance, or surrender
-  yet — so measured house edges will be somewhat worse than the published
-  ~0.5% full-basic-strategy figure until those rules are added.
+  one card) on any first two cards, including after a split (DAS).
+- Splitting: a pair of equal-value cards may be split into two hands, each
+  with a fresh 1-unit bet, up to 4 hands per seat. Split aces receive
+  exactly one card each and cannot be resplit; a 21 on a split hand is a
+  plain 21, not a blackjack. No insurance or surrender yet.
 - Flat 1-unit bet per seat per round; bankrolls track cumulative units.
 - The shoe reshuffles between rounds when it runs low (and mid-round in the
   rare case it empties, by rebuilding a fresh shoe).
 
 A game is a session of `num_rounds` rounds at a table of `num_seats` seats.
 Each seat plays a Strategy: an object with
-    decide(hand, dealer_up_value, can_double) -> "hit" | "stand" | "double"
-where hand is the seat's list of Cards and dealer_up_value is 2-11 (ace=11).
+    decide(hand, dealer_up_value, can_double, can_split=False)
+        -> "hit" | "stand" | "double" | "split"
+where hand is one hand's list of Cards and dealer_up_value is 2-11 (ace=11).
 Strategies are registered by name in STRATEGIES and assigned to seats
 round-robin from the `strategies` list, so a table can mix strategies and a
 batch can compare them under identical conditions.
@@ -27,8 +30,9 @@ from dataclasses import dataclass, field
 from . import events as ev
 from .cards import Card, build_shoe
 
-HIT, STAND, DOUBLE = "hit", "stand", "double"
+HIT, STAND, DOUBLE, SPLIT = "hit", "stand", "double", "split"
 DEALER = 0  # seat id used for the dealer in CardDealt events
+MAX_SPLIT_HANDS = 4  # a seat may split to at most this many hands
 
 
 def card_value(card: Card) -> int:
@@ -67,7 +71,7 @@ class HitBelow:
     def __init__(self, threshold: int):
         self.threshold = threshold
 
-    def decide(self, hand, dealer_up, can_double):
+    def decide(self, hand, dealer_up, can_double, can_split=False):
         return HIT if hand_value(hand)[0] < self.threshold else STAND
 
 
@@ -75,7 +79,7 @@ class NeverBust:
     """Hit only when busting is impossible: hard 11 or less, or soft 17 or less
     (one card can never bust a soft hand)."""
 
-    def decide(self, hand, dealer_up, can_double):
+    def decide(self, hand, dealer_up, can_double, can_split=False):
         total, soft = hand_value(hand)
         if total <= 11 or (soft and total <= 17):
             return HIT
@@ -83,9 +87,30 @@ class NeverBust:
 
 
 class BasicStrategy:
-    """Total-dependent basic strategy for S17 hit/stand/double (no splits)."""
+    """Basic strategy for S17 with pair splitting (assumes DAS)."""
 
-    def decide(self, hand, dealer_up, can_double):
+    @staticmethod
+    def _split_pair(pair_value: int, dealer_up: int) -> bool:
+        """S17 DAS pair chart, keyed by the value of one card of the pair."""
+        if pair_value == 11:  # aces
+            return True
+        if pair_value == 9:
+            return dealer_up in (2, 3, 4, 5, 6, 8, 9)  # stand vs 7, 10, ace
+        if pair_value == 8:
+            return True
+        if pair_value == 7:
+            return dealer_up <= 7
+        if pair_value == 6:
+            return dealer_up <= 6
+        if pair_value == 4:
+            return dealer_up in (5, 6)
+        if pair_value in (2, 3):
+            return dealer_up <= 7
+        return False  # 10s (keep the 20) and 5s (play as a 10)
+
+    def decide(self, hand, dealer_up, can_double, can_split=False):
+        if can_split and self._split_pair(card_value(hand[0]), dealer_up):
+            return SPLIT
         total, soft = hand_value(hand)
         if soft:
             if total >= 19:
@@ -143,13 +168,24 @@ class SeatState:
     strategy_name: str
     strategy: object
     bankroll: float = 0.0
-    hands: int = 0
-    wins: int = 0
+    hands: int = 0   # ORIGINAL hands (one per round) — the EV denominator, so
+                     # net/hands stays comparable to published per-initial-bet
+                     # house edges even when splits create extra hands
+    wins: int = 0    # win/loss/push/bust count every RESOLVED hand, splits included
     losses: int = 0
     pushes: int = 0
     blackjacks: int = 0
     busts: int = 0
+    splits: int = 0
     outcomes: dict = field(default_factory=dict)  # unused placeholder for future rules
+
+
+@dataclass
+class _Hand:
+    """One playable hand at a seat (a seat holds several after splitting)."""
+    cards: list
+    bet: float = 1.0
+    from_split_aces: bool = False  # split aces: one card each, no resplit
 
 
 class BlackjackGame:
@@ -218,10 +254,12 @@ class BlackjackGame:
             self._reshuffle()
         return self.shoe.pop()
 
-    def _deal(self, seat: int, hand: list[Card], face_up: bool = True) -> Card:
+    def _deal(self, seat: int, cards: list[Card], face_up: bool = True,
+              hand: int = 0) -> Card:
         card = self._draw()
-        hand.append(card)
-        self._emit(ev.CardDealt(round=self.round, seat=seat, card=card, face_up=face_up))
+        cards.append(card)
+        self._emit(ev.CardDealt(round=self.round, seat=seat, card=card,
+                                face_up=face_up, hand=hand))
         return card
 
     # --------------------------------------------------------------- play
@@ -261,53 +299,80 @@ class BlackjackGame:
         self._emit(ev.RoundStarted(round=self.round, players=seat_ids))
 
         # initial deal: one card around, dealer up, second card around, hole
-        hands: dict[int, list[Card]] = {sid: [] for sid in seat_ids}
+        seat_hands: dict[int, list[_Hand]] = {sid: [_Hand(cards=[])] for sid in seat_ids}
         dealer: list[Card] = []
-        bets = {sid: 1.0 for sid in seat_ids}
         for sid in seat_ids:
-            self._deal(sid, hands[sid])
+            self._deal(sid, seat_hands[sid][0].cards)
         self._deal(DEALER, dealer)
         for sid in seat_ids:
-            self._deal(sid, hands[sid])
+            self._deal(sid, seat_hands[sid][0].cards)
         self._deal(DEALER, dealer, face_up=False)
 
         dealer_up = card_value(dealer[0])
         dealer_bj = dealer_up in (10, 11) and is_blackjack(dealer)  # peek
 
         # player turns (skipped entirely if the dealer has blackjack)
-        busted: set[int] = set()
-        naturals = {sid for sid in seat_ids if is_blackjack(hands[sid])}
+        naturals = {sid for sid in seat_ids if is_blackjack(seat_hands[sid][0].cards)}
         if not dealer_bj:
             for sid in seat_ids:
                 if sid in naturals:
                     continue
-                hand = hands[sid]
-                while True:
-                    total, _ = hand_value(hand)
-                    if total >= 21:
-                        break
-                    action = self.seats[sid].strategy.decide(hand, dealer_up, len(hand) == 2)
-                    if action == DOUBLE and len(hand) != 2:
-                        action = HIT  # illegal double downgraded
-                    if action == HIT:
-                        self._deal(sid, hand)
-                        self._emit(ev.SeatAction(round=self.round, seat=sid,
-                                                 action=HIT, total=hand_value(hand)[0]))
-                    elif action == DOUBLE:
-                        bets[sid] *= 2
-                        self._deal(sid, hand)
-                        self._emit(ev.SeatAction(round=self.round, seat=sid,
-                                                 action=DOUBLE, total=hand_value(hand)[0]))
-                        break
-                    else:
-                        self._emit(ev.SeatAction(round=self.round, seat=sid,
-                                                 action=STAND, total=total))
-                        break
-                if hand_value(hand)[0] > 21:
-                    busted.add(sid)
+                seat = self.seats[sid]
+                hands_list = seat_hands[sid]
+                i = 0
+                while i < len(hands_list):  # splits append hands while we play
+                    hand = hands_list[i]
+                    if len(hand.cards) == 1:  # a split hand is owed its second card
+                        self._deal(sid, hand.cards, hand=i)
+                    while True:
+                        total, _ = hand_value(hand.cards)
+                        if total >= 21:
+                            break
+                        if hand.from_split_aces and len(hand.cards) == 2:
+                            break  # split aces receive exactly one card
+                        two = len(hand.cards) == 2
+                        can_split = (two and len(hands_list) < MAX_SPLIT_HANDS
+                                     and not hand.from_split_aces
+                                     and card_value(hand.cards[0]) == card_value(hand.cards[1]))
+                        action = seat.strategy.decide(hand.cards, dealer_up, two, can_split)
+                        if action == SPLIT and not can_split:
+                            # a strategy that ignored can_split: re-ask without
+                            # the option so it uses its own hit/stand/double
+                            # line (blind HIT could hit a 20); STAND if it insists
+                            action = seat.strategy.decide(hand.cards, dealer_up, two, False)
+                            if action == SPLIT:
+                                action = STAND
+                        if action == DOUBLE and not two:
+                            action = HIT  # illegal double downgraded
+                        if action == SPLIT:
+                            moved = hand.cards.pop()
+                            aces = card_value(moved) == 11
+                            hand.from_split_aces = aces
+                            hands_list.append(_Hand(cards=[moved], from_split_aces=aces))
+                            seat.splits += 1
+                            self._emit(ev.HandSplit(round=self.round, seat=sid, hand=i,
+                                                    new_hand=len(hands_list) - 1))
+                            self._deal(sid, hand.cards, hand=i)
+                            continue  # keep playing this hand with its new card
+                        if action == HIT:
+                            self._deal(sid, hand.cards, hand=i)
+                            self._emit(ev.SeatAction(round=self.round, seat=sid, action=HIT,
+                                                     total=hand_value(hand.cards)[0], hand=i))
+                        elif action == DOUBLE:
+                            hand.bet *= 2
+                            self._deal(sid, hand.cards, hand=i)
+                            self._emit(ev.SeatAction(round=self.round, seat=sid, action=DOUBLE,
+                                                     total=hand_value(hand.cards)[0], hand=i))
+                            break
+                        else:
+                            self._emit(ev.SeatAction(round=self.round, seat=sid,
+                                                     action=STAND, total=total, hand=i))
+                            break
+                    i += 1
 
-        # dealer plays only if someone still needs a dealer total
-        live = [sid for sid in seat_ids if sid not in busted and sid not in naturals]
+        # dealer plays only if some non-natural hand is still standing
+        live = [h for sid in seat_ids if sid not in naturals
+                for h in seat_hands[sid] if hand_value(h.cards)[0] <= 21]
         if dealer_bj or live:
             self._emit(ev.DealerRevealed(round=self.round, card=dealer[1],
                                          total=hand_value(dealer)[0]))
@@ -316,38 +381,39 @@ class BlackjackGame:
                 self._deal(DEALER, dealer)
         dealer_total = hand_value(dealer)[0]
 
-        # settle
+        # settle every hand at every seat
         for sid in seat_ids:
             seat = self.seats[sid]
-            player_total = hand_value(hands[sid])[0]
-            if dealer_bj:
-                outcome, payout = ("push", 0.0) if sid in naturals else ("lose", -bets[sid])
-            elif sid in naturals:
-                outcome, payout = "blackjack", 1.5
-            elif sid in busted:
-                outcome, payout = "bust", -bets[sid]
-            elif dealer_total > 21 or player_total > dealer_total:
-                outcome, payout = "win", bets[sid]
-            elif player_total < dealer_total:
-                outcome, payout = "lose", -bets[sid]
-            else:
-                outcome, payout = "push", 0.0
-            seat.bankroll += payout
-            seat.hands += 1
-            if outcome in ("win",):
-                seat.wins += 1
-            elif outcome in ("lose", "bust"):
-                seat.losses += 1
-                if outcome == "bust":
-                    seat.busts += 1
-            elif outcome == "push":
-                seat.pushes += 1
-            if outcome == "blackjack":
-                seat.wins += 1
-                seat.blackjacks += 1
-            self._emit(ev.HandResult(round=self.round, seat=sid, outcome=outcome,
-                                     payout=payout, player_total=player_total,
-                                     dealer_total=dealer_total))
+            seat.hands += 1  # original hands only — see SeatState.hands
+            for hi, hand in enumerate(seat_hands[sid]):
+                player_total = hand_value(hand.cards)[0]
+                if dealer_bj:
+                    outcome, payout = ("push", 0.0) if sid in naturals else ("lose", -hand.bet)
+                elif sid in naturals:
+                    outcome, payout = "blackjack", 1.5
+                elif player_total > 21:
+                    outcome, payout = "bust", -hand.bet
+                elif dealer_total > 21 or player_total > dealer_total:
+                    outcome, payout = "win", hand.bet
+                elif player_total < dealer_total:
+                    outcome, payout = "lose", -hand.bet
+                else:
+                    outcome, payout = "push", 0.0
+                seat.bankroll += payout
+                if outcome in ("win",):
+                    seat.wins += 1
+                elif outcome in ("lose", "bust"):
+                    seat.losses += 1
+                    if outcome == "bust":
+                        seat.busts += 1
+                elif outcome == "push":
+                    seat.pushes += 1
+                if outcome == "blackjack":
+                    seat.wins += 1
+                    seat.blackjacks += 1
+                self._emit(ev.HandResult(round=self.round, seat=sid, outcome=outcome,
+                                         payout=payout, player_total=player_total,
+                                         dealer_total=dealer_total, hand=hi))
 
         self._emit(ev.RoundSettled(round=self.round,
                                    bankrolls={s.id: round(s.bankroll, 1)
@@ -369,6 +435,9 @@ class BlackjackGame:
     # ---------------------------------------------------------- inspection
 
     def per_strategy(self) -> dict:
+        """Aggregate by strategy. "hands" counts original hands (one per seat
+        per round), so "ev" is net units per initial bet — the same basis as
+        published house-edge figures, splits and doubles included in net."""
         totals: dict[str, dict] = {}
         for seat in self.seats.values():
             entry = totals.setdefault(seat.strategy_name,
@@ -408,6 +477,7 @@ class BlackjackGame:
                     "pushes": s.pushes,
                     "blackjacks": s.blackjacks,
                     "busts": s.busts,
+                    "splits": s.splits,
                 }
                 for s in self.seats.values()
             },

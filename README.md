@@ -15,7 +15,7 @@ Built as a headless Python engine (no dependencies) with a web frontend.
 ## Features
 
 - **Two games** — War (pure luck, up to 100 players) and Blackjack (multi-seat
-  vs the dealer, S17, 3:2 blackjacks, doubling)
+  vs the dealer, S17, 3:2 blackjacks, doubling, pair splitting)
 - **Pluggable strategies** — assign hit/stand policies per blackjack seat
   (basic strategy, hit-below-N, never-bust) and measure which actually wins:
   the batch view charts EV per hand by strategy over hundreds of thousands of
@@ -133,7 +133,8 @@ planned, "war-card-game" no longer fit — the project was renamed
 
 - [x] Batch statistics — run N seeds, chart the distribution of game lengths
 - [x] Second game with player-selectable strategies (Blackjack)
-- [ ] Blackjack rule extensions: splitting, insurance, card-counting strategies
+- [x] Blackjack pair splitting (validated: basic strategy measures the published ≈−0.5% EV)
+- [ ] Blackjack rule extensions: insurance, surrender, card-counting strategies
 - [ ] Go Fish — hidden information and memory-based strategies
 - [ ] Sound effects and card animations in playback
 - [ ] Network multiplayer / shared spectating

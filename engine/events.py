@@ -105,6 +105,7 @@ class CardDealt(Event):
     seat: int  # 0 = dealer
     card: Card
     face_up: bool
+    hand: int = 0  # hand index within the seat; splits create hands 1, 2, 3
 
 
 @dataclass
@@ -112,6 +113,14 @@ class SeatAction(Event):
     seat: int
     action: str  # "hit" | "stand" | "double"
     total: int   # hand total after the action resolves
+    hand: int = 0
+
+
+@dataclass
+class HandSplit(Event):
+    seat: int
+    hand: int      # index of the pair hand that was split
+    new_hand: int  # index of the hand created (appended after existing hands)
 
 
 @dataclass
@@ -127,6 +136,7 @@ class HandResult(Event):
     payout: float  # in bet units: +1 win, -1 lose, +1.5 blackjack, ±2 doubled
     player_total: int
     dealer_total: int
+    hand: int = 0  # one HandResult per hand; split seats emit several per round
 
 
 @dataclass

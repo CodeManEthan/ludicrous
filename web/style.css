@@ -331,8 +331,16 @@ main {
 .dealer-area .hand-cards img { width: 52px; }
 .dealer-area .dtotal { font-size: 15px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
-.hand-cards { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; min-height: 52px; }
+.hand-cards { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; min-height: 52px; }
 .hand-cards img { width: 38px; height: auto; border-radius: 3px; display: block; }
+/* one .bjhand per hand at the seat; the border only appears once a split
+   makes a second hand, tinted by that hand's outcome */
+.hand-cards .bjhand { display: inline-flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
+.hand-cards .bjhand:not(:only-child) {
+  padding: 3px; border: 1px solid rgba(137, 135, 129, .4); border-radius: 6px;
+}
+.hand-cards .bjhand.h-win:not(:only-child) { border-color: var(--good); }
+.hand-cards .bjhand.h-lose:not(:only-child) { border-color: #e66767; }
 
 .player .pstrat {
   font-size: 10px;

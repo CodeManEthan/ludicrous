@@ -48,25 +48,33 @@ python3 -m unittest discover        # run the engine test suite
 `BlackjackGame(num_seats, num_decks=6, num_rounds=100, strategies=[...], seed)`
 plays a session of flat-bet rounds at one table against the dealer. Rules:
 dealer stands on all 17s, blackjack pays 3:2, dealer peeks, double on any
-first two cards; no splitting/insurance/surrender yet (so measured house
-edges run ~0.4-0.5% worse than published full-basic figures).
+first two cards including after a split (DAS). Pairs of equal-value cards
+may be split up to 4 hands per seat, each with a fresh 1-unit bet; split
+aces get exactly one card each, can't be resplit, and a split 21 is not a
+blackjack. No insurance or surrender yet.
 
 A **strategy** is an object with
-`decide(hand, dealer_up_value, can_double) -> "hit" | "stand" | "double"` —
-it sees only the seat's own cards and the dealer upcard. Strategies are
-registered by name in `STRATEGIES` (`basic`, `never-bust`, `hit-below-15/16/17`)
-and assigned to seats round-robin, so one table can race strategies under
-identical conditions. `summary()["per_strategy"]` reports hands, net units,
-and EV per hand for each.
+`decide(hand, dealer_up_value, can_double, can_split=False) ->
+"hit" | "stand" | "double" | "split"` — it sees one hand's cards and the
+dealer upcard. Strategies are registered by name in `STRATEGIES` (`basic`,
+`never-bust`, `hit-below-15/16/17`) and assigned to seats round-robin, so
+one table can race strategies under identical conditions.
+`summary()["per_strategy"]` reports hands, net units, and EV per hand for
+each — "hands" counts *original* hands (one per seat per round), so EV is
+per initial bet, the same basis as published house-edge figures.
 
 Blackjack events: `StrategiesAssigned`, `ShoeShuffled`, `CardDealt` (seat 0 =
-dealer), `SeatAction`, `DealerRevealed`, `HandResult`, `RoundSettled`
-(cumulative bankrolls — the frontend's bankroll chart series).
+dealer; `hand` = hand index within the seat), `SeatAction`, `HandSplit`
+(the last card of hand `hand` moves to new hand `new_hand` — replayers must
+move it, it is not re-dealt), `DealerRevealed`, `HandResult` (one per hand),
+`RoundSettled` (cumulative bankrolls — the frontend's bankroll chart series).
 
-Validation note: over a million seeded hands, `basic` measures ≈ **-1.0%**
-EV per hand (published full basic ≈ -0.55% plus the missing-splits cost) and
-`hit-below-17` (≈ mimic-the-dealer) measures ≈ **-5.7%** vs the published
-≈ -5.5% — the engine reproduces the casino math.
+Validation note: over ten million seeded hands, `basic` (with pair
+splitting) measures ≈ **-0.5%** EV per hand, matching the published
+full-basic ≈ -0.55%, and `hit-below-17` (≈ mimic-the-dealer) measures
+≈ **-5.7%** vs the published ≈ -5.5% — the engine reproduces the casino
+math. Before splitting was implemented, `basic` measured ≈ -1.0%; the
+missing-splits cost accounted for the gap, as predicted.
 
 ## Batch simulation
 

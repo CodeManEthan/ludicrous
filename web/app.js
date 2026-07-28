@@ -276,7 +276,7 @@ function buildIndexBlackjack(events, rounds) {
   const perRound = new Array(rounds + 1).fill(null);
   const roundAt = (r) => (perRound[r] ??= {
     hands: {}, dealer: [], dealerRevealed: false, results: {},
-    bankrolls: null, shuffled: false,
+    bankrolls: null, shuffled: false, splits: 0,
   });
   const bankrollSeries = {};
   let names = null;
@@ -296,14 +296,28 @@ function buildIndexBlackjack(events, rounds) {
       case "CardDealt": {
         const round = roundAt(e.round);
         if (e.seat === 0) round.dealer.push({ card: e.card, faceUp: e.face_up });
-        else (round.hands[e.seat] ??= []).push(e.card);
+        else {
+          // hands[seat] is an array of hands (splits create indexes 1+);
+          // e.hand is undefined in pre-split recordings -> hand 0
+          const seatHands = (round.hands[e.seat] ??= []);
+          (seatHands[e.hand ?? 0] ??= []).push(e.card);
+        }
+        break;
+      }
+      case "HandSplit": {
+        // the pair card was dealt to the source hand; move it to the new one
+        const round = roundAt(e.round);
+        round.splits += 1;
+        const seatHands = (round.hands[e.seat] ??= []);
+        const from = seatHands[e.hand ?? 0] || [];
+        (seatHands[e.new_hand] ??= []).push(from.pop());
         break;
       }
       case "DealerRevealed":
         roundAt(e.round).dealerRevealed = true;
         break;
       case "HandResult":
-        roundAt(e.round).results[e.seat] = {
+        (roundAt(e.round).results[e.seat] ??= [])[e.hand ?? 0] = {
           outcome: e.outcome, payout: e.payout,
           playerTotal: e.player_total, dealerTotal: e.dealer_total,
         };
@@ -346,6 +360,7 @@ function prepareBlackjack(data) {
       net: Math.round(seats.reduce((a, x) => a + x.bankroll, 0) * 10) / 10,
       blackjacks: seats.reduce((a, x) => a + x.blackjacks, 0),
       busts: seats.reduce((a, x) => a + x.busts, 0),
+      splits: seats.reduce((a, x) => a + (x.splits || 0), 0),
     };
   }
   let lo = 0, hi = 1;
@@ -407,6 +422,7 @@ function renderStats() {
       ["Hands", fmt.format(stats.hands)],
       ["Table net", `${stats.net >= 0 ? "+" : ""}${fmt.format(stats.net)}u`],
       ["Blackjacks", fmt.format(stats.blackjacks)],
+      ["Splits", fmt.format(stats.splits ?? 0)],
       ["Busts", fmt.format(stats.busts)],
       ["Seats / decks", `${summary.num_players} / ${summary.num_decks}`],
       ["Seed", String(summary.seed)],
@@ -559,29 +575,36 @@ function renderBlackjackRound(round) {
     dealerCards.innerHTML = roundData.dealer
       .map((entry) => `<img src="${entry.faceUp || roundData.dealerRevealed ? cardUrl(entry.card) : CARD_BACK}" alt="">`)
       .join("");
-    const anyResult = Object.values(roundData.results)[0];
+    const anyResult = Object.values(roundData.results).flat()[0];
     dealerTotal.textContent =
       roundData.dealerRevealed && anyResult ? String(anyResult.dealerTotal) : "?";
   }
+  const outcomeClass = (r) =>
+    r.outcome === "win" || r.outcome === "blackjack" ? "o-win"
+      : r.outcome === "lose" || r.outcome === "bust" ? "o-lose" : "o-push";
   for (const tile of $("#grid").children) {
     const sid = tile.dataset.pid;
-    const hand = roundData?.hands[sid] || [];
-    const result = roundData?.results[sid];
-    tile.querySelector(".hand-cards").innerHTML =
-      hand.map((card) => `<img src="${cardUrl(card)}" alt="">`).join("");
+    const hands = roundData?.hands[sid] || [];
+    const results = roundData?.results[sid] || [];
+    tile.querySelector(".hand-cards").innerHTML = hands
+      .map((cards, hi) => {
+        const r = results[hi];
+        const cls = r ? outcomeClass(r).replace("o-", "h-") : "";
+        return `<span class="bjhand ${cls}">` +
+          cards.map((card) => `<img src="${cardUrl(card)}" alt="">`).join("") +
+          `</span>`;
+      })
+      .join("");
     const meta = tile.querySelector(".pmeta");
     if (!roundData) {
       meta.textContent = "±0u";
       continue;
     }
-    const good = result && (result.outcome === "win" || result.outcome === "blackjack");
-    const bad = result && (result.outcome === "lose" || result.outcome === "bust");
-    const outcomeClass = good ? "o-win" : bad ? "o-lose" : "o-push";
     const bankroll = roundData.bankrolls?.[sid] ?? 0;
-    meta.innerHTML =
-      `${result ? result.playerTotal : ""} · ` +
-      `<span class="outcome ${outcomeClass}">${result ? OUTCOME_LABELS[result.outcome] : ""}</span> · ` +
-      `${bankroll >= 0 ? "+" : ""}${bankroll}u`;
+    const perHand = results
+      .map((r) => `${r.playerTotal} <span class="outcome ${outcomeClass(r)}">${OUTCOME_LABELS[r.outcome]}</span>`)
+      .join(" / ");
+    meta.innerHTML = `${perHand} · ${bankroll >= 0 ? "+" : ""}${bankroll}u`;
   }
   $("#banner").innerHTML = describeBlackjackRound(roundData, round);
 }
@@ -591,7 +614,7 @@ function describeBlackjackRound(roundData, round) {
     return `Session start — ${state.summary.num_players} seat(s) vs the dealer, ` +
       `${state.summary.num_decks}-deck shoe. Press play.`;
   }
-  const outcomes = Object.values(roundData.results);
+  const outcomes = Object.values(roundData.results).flat();
   const wins = outcomes.filter((r) => r.outcome === "win" || r.outcome === "blackjack").length;
   const losses = outcomes.filter((r) => r.outcome === "lose" || r.outcome === "bust").length;
   const pushes = outcomes.length - wins - losses;
@@ -601,6 +624,7 @@ function describeBlackjackRound(roundData, round) {
     `table ${net >= 0 ? "+" : ""}${net}u this round`,
   ];
   if (outcomes.some((r) => r.outcome === "blackjack")) parts.push(`<span class="win-name">Blackjack!</span>`);
+  if (roundData.splits) parts.push(`${roundData.splits} split${roundData.splits > 1 ? "s" : ""}`);
   if (roundData.shuffled) parts.push("shoe reshuffled");
   return `Round ${fmt.format(round)}: ` + parts.join(" · ");
 }

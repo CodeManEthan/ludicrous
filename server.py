@@ -114,6 +114,7 @@ def run_blackjack_simulation(config: dict) -> dict:
             "net": round(sum(s.bankroll for s in game.seats.values()), 1),
             "blackjacks": sum(s.blackjacks for s in game.seats.values()),
             "busts": sum(s.busts for s in game.seats.values()),
+            "splits": sum(s.splits for s in game.seats.values()),
         },
         "names": {s.id: s.name for s in game.seats.values()},
         "strategies": {s.id: s.strategy_name for s in game.seats.values()},
