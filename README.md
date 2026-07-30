@@ -145,5 +145,5 @@ This project is open source and available under the MIT License.
 
 ## Credits
 
-- Card images: [Source/Attribution]
+- Card faces: [Vector Playing Cards](https://code.google.com/archive/p/vector-playing-cards/) by Byron Knoll, released into the public domain
 - Developed as a learning project
