@@ -146,4 +146,5 @@ This project is open source and available under the MIT License.
 ## Credits
 
 - Card faces: [Vector Playing Cards](https://code.google.com/archive/p/vector-playing-cards/) by Byron Knoll, released into the public domain
+- Card backs: [Colorful Poker Card Back](https://opengameart.org/content/colorful-poker-card-back) by jeffshee, licensed [CC-BY 3.0](https://creativecommons.org/licenses/by/3.0/)
 - Developed as a learning project
