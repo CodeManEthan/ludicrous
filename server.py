@@ -15,6 +15,7 @@ Run:  python3 server.py  [--port 8000]
 """
 import argparse
 import json
+import os
 import random
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -298,10 +299,11 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(description="Ludicrous web server")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+    parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     args = parser.parse_args()
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Ludicrous running at http://localhost:{args.port}  (Ctrl+C to stop)")
     try:
         server.serve_forever()

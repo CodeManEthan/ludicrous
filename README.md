@@ -43,7 +43,7 @@ Built as a headless Python engine (no dependencies) with a web frontend.
 Requires Python 3.10+ — nothing else. No packages to install.
 
 ```bash
-git clone https://github.com/yourusername/ludicrous.git
+git clone https://github.com/CodeManEthan/ludicrous.git
 cd ludicrous
 python3 server.py
 ```
