@@ -247,7 +247,8 @@ class BlackjackGame:
     def _reshuffle(self) -> None:
         self.shoe = build_shoe(self.num_decks)
         self.rng.shuffle(self.shoe)
-        self._emit(ev.ShoeShuffled(round=self.round, cards=len(self.shoe)))
+        if self.record_events:
+            self._emit(ev.ShoeShuffled(round=self.round, cards=len(self.shoe)))
 
     def _draw(self) -> Card:
         if not self.shoe:  # rare mid-round exhaustion: rebuild a fresh shoe
@@ -258,8 +259,9 @@ class BlackjackGame:
               hand: int = 0) -> Card:
         card = self._draw()
         cards.append(card)
-        self._emit(ev.CardDealt(round=self.round, seat=seat, card=card,
-                                face_up=face_up, hand=hand))
+        if self.record_events:
+            self._emit(ev.CardDealt(round=self.round, seat=seat, card=card,
+                                    face_up=face_up, hand=hand))
         return card
 
     # --------------------------------------------------------------- play
@@ -268,21 +270,22 @@ class BlackjackGame:
         if self._started:
             raise RuntimeError("game already started")
         self._started = True
-        self._emit(
-            ev.GameStarted(
-                round=0,
-                num_players=self.num_seats,
-                num_decks=self.num_decks,
-                player_names={s.id: s.name for s in self.seats.values()},
-                seed=self.seed,
+        if self.record_events:
+            self._emit(
+                ev.GameStarted(
+                    round=0,
+                    num_players=self.num_seats,
+                    num_decks=self.num_decks,
+                    player_names={s.id: s.name for s in self.seats.values()},
+                    seed=self.seed,
+                )
             )
-        )
-        self._emit(
-            ev.StrategiesAssigned(
-                round=0,
-                strategies={s.id: s.strategy_name for s in self.seats.values()},
+            self._emit(
+                ev.StrategiesAssigned(
+                    round=0,
+                    strategies={s.id: s.strategy_name for s in self.seats.values()},
+                )
             )
-        )
         self._reshuffle()
 
     def play_round(self) -> list[ev.Event]:
@@ -296,7 +299,8 @@ class BlackjackGame:
             self._reshuffle()
 
         seat_ids = list(self.seats)
-        self._emit(ev.RoundStarted(round=self.round, players=seat_ids))
+        if self.record_events:
+            self._emit(ev.RoundStarted(round=self.round, players=seat_ids))
 
         # initial deal: one card around, dealer up, second card around, hole
         seat_hands: dict[int, list[_Hand]] = {sid: [_Hand(cards=[])] for sid in seat_ids}
@@ -350,30 +354,34 @@ class BlackjackGame:
                             hand.from_split_aces = aces
                             hands_list.append(_Hand(cards=[moved], from_split_aces=aces))
                             seat.splits += 1
-                            self._emit(ev.HandSplit(round=self.round, seat=sid, hand=i,
-                                                    new_hand=len(hands_list) - 1))
+                            if self.record_events:
+                                self._emit(ev.HandSplit(round=self.round, seat=sid, hand=i,
+                                                        new_hand=len(hands_list) - 1))
                             self._deal(sid, hand.cards, hand=i)
                             continue  # keep playing this hand with its new card
                         if action == HIT:
                             self._deal(sid, hand.cards, hand=i)
-                            self._emit(ev.SeatAction(round=self.round, seat=sid, action=HIT,
-                                                     total=hand_value(hand.cards)[0], hand=i))
+                            if self.record_events:
+                                self._emit(ev.SeatAction(round=self.round, seat=sid, action=HIT,
+                                                         total=hand_value(hand.cards)[0], hand=i))
                         elif action == DOUBLE:
                             hand.bet *= 2
                             self._deal(sid, hand.cards, hand=i)
-                            self._emit(ev.SeatAction(round=self.round, seat=sid, action=DOUBLE,
-                                                     total=hand_value(hand.cards)[0], hand=i))
+                            if self.record_events:
+                                self._emit(ev.SeatAction(round=self.round, seat=sid, action=DOUBLE,
+                                                         total=hand_value(hand.cards)[0], hand=i))
                             break
                         else:
-                            self._emit(ev.SeatAction(round=self.round, seat=sid,
-                                                     action=STAND, total=total, hand=i))
+                            if self.record_events:
+                                self._emit(ev.SeatAction(round=self.round, seat=sid,
+                                                         action=STAND, total=total, hand=i))
                             break
                     i += 1
 
         # dealer plays only if some non-natural hand is still standing
         live = [h for sid in seat_ids if sid not in naturals
                 for h in seat_hands[sid] if hand_value(h.cards)[0] <= 21]
-        if dealer_bj or live:
+        if self.record_events and (dealer_bj or live):
             self._emit(ev.DealerRevealed(round=self.round, card=dealer[1],
                                          total=hand_value(dealer)[0]))
         if live and not dealer_bj:
@@ -411,18 +419,21 @@ class BlackjackGame:
                 if outcome == "blackjack":
                     seat.wins += 1
                     seat.blackjacks += 1
-                self._emit(ev.HandResult(round=self.round, seat=sid, outcome=outcome,
-                                         payout=payout, player_total=player_total,
-                                         dealer_total=dealer_total, hand=hi))
+                if self.record_events:
+                    self._emit(ev.HandResult(round=self.round, seat=sid, outcome=outcome,
+                                             payout=payout, player_total=player_total,
+                                             dealer_total=dealer_total, hand=hi))
 
-        self._emit(ev.RoundSettled(round=self.round,
-                                   bankrolls={s.id: round(s.bankroll, 1)
-                                              for s in self.seats.values()}))
+        if self.record_events:
+            self._emit(ev.RoundSettled(round=self.round,
+                                       bankrolls={s.id: round(s.bankroll, 1)
+                                                  for s in self.seats.values()}))
         if self.round >= self.num_rounds:
             self.is_over = True
             self.winner = max(self.seats.values(), key=lambda s: (s.bankroll, -s.id)).id
-            self._emit(ev.GameOver(round=self.round, winner=self.winner,
-                                   total_rounds=self.round))
+            if self.record_events:
+                self._emit(ev.GameOver(round=self.round, winner=self.winner,
+                                       total_rounds=self.round))
         return self.events[mark:]
 
     def run(self, max_rounds: int | None = None) -> dict:

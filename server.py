@@ -14,6 +14,7 @@ browser-sized. Standard library only — no dependencies.
 Run:  python3 server.py  [--port 8000]
 """
 import argparse
+import gzip
 import json
 import os
 import random
@@ -44,6 +45,26 @@ MAX_BJ_ROUNDS = 10_000
 MAX_BATCH_GAMES = 10_000
 FULL_EVENT_BUDGET = 250_000  # events; ~25 MB of JSON is the ceiling for playback mode
 CHART_POINTS = 1200
+GZIP_LEVEL = 6  # event JSON is highly repetitive: ~16x smaller, and level 6
+                # costs far less than shipping the extra megabytes
+
+
+def accepts_gzip(header: str | None) -> bool:
+    """True if an Accept-Encoding header asks for gzip (and not with q=0)."""
+    for part in (header or "").split(","):
+        token, _, params = part.strip().partition(";")
+        if token.strip().lower() not in ("gzip", "*"):
+            continue
+        for param in params.split(";"):
+            key, _, value = param.partition("=")
+            if key.strip().lower() == "q":
+                try:
+                    if float(value.strip()) == 0:
+                        return False
+                except ValueError:
+                    pass
+        return True
+    return False
 
 
 def make_names(num_players: int, mode: str, rng: random.Random) -> list[str] | None:
@@ -290,8 +311,18 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError, TypeError, KeyError) as error:
             body = json.dumps({"error": str(error)}).encode()
             status = 400
+        # Simulation payloads are megabytes of repetitive JSON; gzip them for
+        # any client that asked, and fall back to plain bytes for one that
+        # didn't. mtime=0 keeps the compressed bytes reproducible.
+        encoding = None
+        if accepts_gzip(self.headers.get("Accept-Encoding")):
+            body = gzip.compress(body, GZIP_LEVEL, mtime=0)
+            encoding = "gzip"
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        if encoding:
+            self.send_header("Content-Encoding", encoding)
+        self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

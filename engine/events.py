@@ -5,9 +5,14 @@ recording of a game: any frontend can replay it at any speed without
 re-running the simulation. All events are JSON-serializable via `to_dict()`
 (note: JSON object keys become strings, and cards become [rank, suit] pairs).
 """
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, fields
 
 from .cards import Card
+
+# Field names per event class, filled in on first use. Serialising a large
+# game means millions of to_dict() calls, so the field list is looked up once
+# per class instead of once per event.
+_FIELD_NAMES: dict[type, tuple[str, ...]] = {}
 
 
 @dataclass
@@ -19,8 +24,20 @@ class Event:
         return type(self).__name__
 
     def to_dict(self) -> dict:
-        d = asdict(self)
-        d["type"] = self.type
+        """Shallow JSON-ready mapping of the event's fields, plus "type".
+
+        Deliberately non-recursive: every event field is already a JSON
+        primitive, a flat dict/list of them, or a Card (a NamedTuple, which
+        json encodes as a [rank, suit] array either way). Skipping the deep
+        copy dataclasses.asdict() does makes this several times faster and
+        produces byte-identical JSON.
+        """
+        cls = type(self)
+        names = _FIELD_NAMES.get(cls)
+        if names is None:
+            names = _FIELD_NAMES[cls] = tuple(f.name for f in fields(cls))
+        d = {name: getattr(self, name) for name in names}
+        d["type"] = cls.__name__
         return d
 
 

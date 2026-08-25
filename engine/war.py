@@ -92,22 +92,24 @@ class WarGame:
         if self._started:
             raise RuntimeError("game already started")
         self._started = True
-        self._emit(
-            ev.GameStarted(
-                round=0,
-                num_players=self.num_players,
-                num_decks=self.num_decks,
-                player_names={p.id: p.name for p in self.players.values()},
-                seed=self.seed,
+        if self.record_events:
+            self._emit(
+                ev.GameStarted(
+                    round=0,
+                    num_players=self.num_players,
+                    num_decks=self.num_decks,
+                    player_names={p.id: p.name for p in self.players.values()},
+                    seed=self.seed,
+                )
             )
-        )
         shoe = build_shoe(self.num_decks)
         self.rng.shuffle(shoe)
         # Deal round-robin so every card is in play even when the count
         # doesn't divide evenly (the original GUI silently dropped leftovers).
         for i, card in enumerate(shoe):
             self.players[(i % self.num_players) + 1].deck.append(card)
-        self._emit(ev.CardsDealt(round=0, card_counts=self.card_counts()))
+        if self.record_events:
+            self._emit(ev.CardsDealt(round=0, card_counts=self.card_counts()))
 
     # ------------------------------------------------------------------- play
 
@@ -121,16 +123,18 @@ class WarGame:
         self.round += 1
 
         active = [p.id for p in self.players.values() if p.in_game]
-        self._emit(ev.RoundStarted(round=self.round, players=active))
+        if self.record_events:
+            self._emit(ev.RoundStarted(round=self.round, players=active))
 
         in_round: dict[int, Card] = {}
         for pid in active:
             card = self._draw(pid)
             self.table.append(card)
             in_round[pid] = card
-            self._emit(
-                ev.CardPlayed(round=self.round, player=pid, card=card, face_up=True)
-            )
+            if self.record_events:
+                self._emit(
+                    ev.CardPlayed(round=self.round, player=pid, card=card, face_up=True)
+                )
 
         winner, via = self._resolve(in_round)
 
@@ -141,24 +145,28 @@ class WarGame:
             winning_player.reserve.extend(self.table)
             self.table.clear()
             winning_player.wins += 1
-            self._emit(
-                ev.RoundWon(round=self.round, winner=winner, cards_won=pot, via=via)
-            )
+            if self.record_events:
+                self._emit(
+                    ev.RoundWon(round=self.round, winner=winner, cards_won=pot, via=via)
+                )
 
         for pid in active:
             player = self.players[pid]
             if player.in_game and player.card_count == 0:
                 self._eliminate(pid, "out_of_cards")
 
-        self._emit(ev.RoundEnded(round=self.round, card_counts=self.card_counts()))
+        if self.record_events:
+            self._emit(ev.RoundEnded(round=self.round, card_counts=self.card_counts()))
 
         remaining = [p for p in self.players.values() if p.in_game]
         if len(remaining) <= 1:
             self.is_over = True
             self.winner = remaining[0].id if remaining else None
-            self._emit(
-                ev.GameOver(round=self.round, winner=self.winner, total_rounds=self.round)
-            )
+            if self.record_events:
+                self._emit(
+                    ev.GameOver(round=self.round, winner=self.winner,
+                                total_rounds=self.round)
+                )
         return self.events[mark:]
 
     def run(self, max_rounds: int | None = None) -> dict:
@@ -224,7 +232,8 @@ class WarGame:
             return
         player.in_game = False
         player.round_out = self.round
-        self._emit(ev.PlayerEliminated(round=self.round, player=pid, reason=reason))
+        if self.record_events:
+            self._emit(ev.PlayerEliminated(round=self.round, player=pid, reason=reason))
 
     def _tiebreaker_type(self, contenders: list[int]) -> str:
         with_4 = sum(1 for pid in contenders if self.players[pid].card_count >= 4)
@@ -259,15 +268,16 @@ class WarGame:
             self.war_count += 1
             self.deepest_war = max(self.deepest_war, depth)
             tiebreaker = self._tiebreaker_type(contenders)
-            self._emit(
-                ev.WarDeclared(
-                    round=self.round,
-                    players=contenders,
-                    rank=highest,
-                    depth=depth,
-                    tiebreaker=tiebreaker,
+            if self.record_events:
+                self._emit(
+                    ev.WarDeclared(
+                        round=self.round,
+                        players=contenders,
+                        rank=highest,
+                        depth=depth,
+                        tiebreaker=tiebreaker,
+                    )
                 )
-            )
 
             if tiebreaker == "Draw":
                 self._split_table(contenders)
@@ -288,14 +298,15 @@ class WarGame:
                     card = self._draw(pid)
                     self.table.append(card)
                     last_card = card
-                    self._emit(
-                        ev.CardPlayed(
-                            round=self.round,
-                            player=pid,
-                            card=card,
-                            face_up=survives and i == to_play - 1,
+                    if self.record_events:
+                        self._emit(
+                            ev.CardPlayed(
+                                round=self.round,
+                                player=pid,
+                                card=card,
+                                face_up=survives and i == to_play - 1,
+                            )
                         )
-                    )
                 if survives:
                     in_round[pid] = last_card
                 else:
@@ -321,6 +332,7 @@ class WarGame:
             self.players[pid].reserve.append(card)
             returned[pid] += 1
         self.table.clear()
-        self._emit(
-            ev.RoundDrawn(round=self.round, players=players, cards_returned=returned)
-        )
+        if self.record_events:
+            self._emit(
+                ev.RoundDrawn(round=self.round, players=players, cards_returned=returned)
+            )

@@ -8,17 +8,58 @@ and small.
 """
 from __future__ import annotations
 
+import atexit
 import statistics
-from concurrent.futures import ProcessPoolExecutor
+import threading
+from concurrent.futures import BrokenExecutor, ProcessPoolExecutor
 
 from .blackjack import BlackjackGame
 from .war import WarGame
+
+# One worker pool for the whole process, created on first use. Spinning up a
+# ProcessPoolExecutor costs tens of milliseconds — more than a small batch
+# takes to run — so the pool is kept alive and shared across calls instead.
+_pool: ProcessPoolExecutor | None = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool() -> ProcessPoolExecutor:
+    """The shared pool, started on demand.
+
+    Creation is locked because the threaded web server can enter run_batch()
+    from several request threads at once. Using the pool needs no lock:
+    Executor.submit (and so map) is itself thread-safe.
+    """
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = ProcessPoolExecutor()
+    return _pool
+
+
+@atexit.register
+def _shutdown_pool() -> None:
+    """Stop the workers so the CLI and the test runner exit cleanly."""
+    global _pool
+    pool, _pool = _pool, None
+    if pool is not None:
+        pool.shutdown(wait=True)
 
 
 def _parallel(worker, args_list: list) -> list:
     if len(args_list) == 1:
         return [worker(args_list[0])]
-    with ProcessPoolExecutor() as pool:
+    pool = _get_pool()
+    chunk = max(1, len(args_list) // ((pool._max_workers or 1) * 8))
+    try:
+        return list(pool.map(worker, args_list, chunksize=chunk))
+    except BrokenExecutor:
+        # A worker died (an OOM kill, say). A fresh pool per call used to
+        # absorb that; now the pool outlives the call, so retire the broken
+        # one and retry once rather than poisoning every later batch.
+        _shutdown_pool()
+        pool = _get_pool()
         chunk = max(1, len(args_list) // ((pool._max_workers or 1) * 8))
         return list(pool.map(worker, args_list, chunksize=chunk))
 
