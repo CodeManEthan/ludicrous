@@ -286,6 +286,14 @@ def run_batch_api(config: dict) -> dict:
 
 
 class Handler(SimpleHTTPRequestHandler):
+    # Python's mimetypes table doesn't reliably know about .wasm, and a
+    # browser refuses to stream-compile a module served as anything else.
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        ".wasm": "application/wasm",
+        ".js": "text/javascript",
+    }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB_DIR), **kwargs)
 

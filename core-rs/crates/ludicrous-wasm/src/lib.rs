@@ -13,9 +13,13 @@ use ludicrous_core::war::{Config, Summary, WarGame};
 use ludicrous_core::Xoshiro256ss;
 use wasm_bindgen::prelude::*;
 
+pub mod prepared;
+
+pub use prepared::{prepare, WarPrepared};
+
 type Game = WarGame<Xoshiro256ss, NullSink>;
 
-fn config(num_players: u32, num_decks: u32, max_rounds: f64) -> Config {
+pub(crate) fn config(num_players: u32, num_decks: u32, max_rounds: f64) -> Config {
     Config {
         num_players,
         num_decks,
@@ -27,7 +31,7 @@ fn config(num_players: u32, num_decks: u32, max_rounds: f64) -> Config {
     }
 }
 
-fn summary_json(s: &Summary) -> String {
+pub(crate) fn summary_json(s: &Summary) -> String {
     let mut out = String::with_capacity(256);
     out.push_str("{\"game\": \"war\"");
     out.push_str(&format!(

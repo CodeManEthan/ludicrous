@@ -8,6 +8,7 @@ const FIELD = "rgba(137, 135, 129, 0.28)";
 const CARD_BACK = "/cards/card_back_red.png";
 const RANK_NAMES = { 11: "jack", 12: "queen", 13: "king", 14: "ace" };
 const CHART_POINTS = 1200;
+const V2_WORKER_URL = "war-worker.js";
 
 const STRATEGY_META = [
   ["basic", "Basic strategy"],
@@ -34,6 +35,15 @@ let winsCache = { round: -1, wins: {} };
 let chartScale = null; // set by drawChart()
 let hoverX = null;
 
+// v2 (client-side wasm) engine. See war-worker.js for the protocol.
+let v2Worker = null;
+let v2Seq = 0;
+const v2Pending = new Map();
+let v2RoundInFlight = false;
+let v2RoundQueued = null;
+let urlEngine = null;  // engine the URL asked for, consumed by the first run
+let loadGen = 0;       // bumped per loaded game, so late replies can't paint
+
 // ---------------------------------------------------------------- helpers
 
 function cardUrl([rank, suit]) {
@@ -47,6 +57,196 @@ function showError(message) {
   el.hidden = false;
   clearTimeout(el._timer);
   el._timer = setTimeout(() => { el.hidden = true; }, 6000);
+}
+
+// ------------------------------------------------------- v2 engine (wasm)
+//
+// A v2 game never posts to /api/simulate. It is (config, seed) plus a
+// checkpoint set living in a worker: prepare() runs the whole game once,
+// then every rendered round is reconstructed on demand. There is no event
+// log and therefore no size cliff — full playback at any scale.
+
+function v2Available() {
+  return typeof Worker === "function" && typeof WebAssembly === "object";
+}
+
+function v2Start() {
+  if (v2Worker) return v2Worker;
+  const worker = new Worker(V2_WORKER_URL);
+  worker.onmessage = (event) => {
+    const { id, ok, result, error } = event.data;
+    const entry = v2Pending.get(id);
+    if (!entry) return;
+    v2Pending.delete(id);
+    if (ok) entry.resolve(result);
+    else entry.reject(new Error(error));
+  };
+  worker.onerror = (event) => {
+    const error = new Error(event.message || "engine worker failed to start");
+    for (const entry of v2Pending.values()) entry.reject(error);
+    v2Pending.clear();
+    worker.terminate();
+    if (v2Worker === worker) v2Worker = null;
+  };
+  v2Worker = worker;
+  return worker;
+}
+
+function v2Send(message) {
+  const worker = v2Start();
+  const id = ++v2Seq;
+  return new Promise((resolve, reject) => {
+    v2Pending.set(id, { resolve, reject });
+    worker.postMessage({ ...message, id });
+  });
+}
+
+// Which engine a click on Simulate should use. The URL wins for the run it
+// came with (so an old share link — no engine param — still replays through
+// the server, byte for byte as before); everything else prefers v2.
+function pickEngine() {
+  const forced = urlEngine;
+  urlEngine = null;
+  if (gameType !== "war" || mode !== "single") return "v1";
+  if (!v2Available()) return "v1";
+  return forced === null || forced === "v2" ? "v2" : "v1";
+}
+
+// Deterministic shuffle for client-side names: same seed, same table, so a
+// share URL reproduces the names as well as the cards.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function makeNames(players, nameMode, seed) {
+  const names = {};
+  if (nameMode !== "random" || typeof NAME_POOL === "undefined") {
+    for (let i = 1; i <= players; i++) names[i] = `Player ${i}`;
+    return names;
+  }
+  const pool = NAME_POOL.slice();
+  const rand = mulberry32(seed);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  for (let i = 0; i < players; i++) {
+    names[i + 1] = i < pool.length
+      ? pool[i]
+      : `${pool[i % pool.length]} ${Math.floor(i / pool.length) + 1}`;
+  }
+  return names;
+}
+
+function buildV2State(result, names) {
+  const summary = result.summary;
+  const players = result.numPlayers;
+  const xs = Array.from(result.chartRounds);
+  const samples = xs.length;
+  const series = {};
+  const initialCounts = {};
+  for (let p = 0; p < players; p++) {
+    const row = new Array(samples);
+    for (let i = 0; i < samples; i++) {
+      const value = result.chartSeries[p * samples + i];
+      row[i] = value < 0 ? null : value;  // -1 = already eliminated
+    }
+    series[p + 1] = row;
+    initialCounts[p + 1] = result.initialCounts[p];
+  }
+  const elimRound = {};
+  const elimSorted = [];
+  for (let i = 0; i < result.elimRounds.length; i++) {
+    const player = result.elimPlayers[i];
+    elimRound[player] = result.elimRounds[i];
+    elimSorted.push({ player, round: result.elimRounds[i] });
+  }
+  const stats = {
+    wars: summary.wars,
+    deepest_war: summary.deepest_war,
+    biggest_pot: summary.biggest_pot,
+    total_cards: summary.num_decks * 52,
+  };
+  return {
+    game: "war",
+    mode: "full",
+    engine: "v2",
+    summary,
+    rounds: summary.rounds,
+    standings: Array.from(result.standings),
+    names,
+    stats,
+    chartData: { rounds: xs, series },
+    initialCounts,
+    elimRound,
+    elimSorted,
+    totalCards: stats.total_cards,
+    chartRange: { yMin: 0, yMax: stats.total_cards },
+  };
+}
+
+async function simulateV2() {
+  const players = Number($("#players").value);
+  const decks = Number($("#decks").value);
+  const maxRounds = Number($("#maxRounds").value) || 1_000_000;
+  const seedText = $("#seed").value.trim();
+  const seed = seedText === "" ? Math.floor(Math.random() * 1e9) : Number(seedText);
+  if (!Number.isFinite(seed)) throw new Error("seed must be a number");
+  const nameMode = $("#nameMode").value;
+
+  pause();
+  const result = await v2Send({ type: "prepare", players, decks, seed, maxRounds });
+  console.info(
+    `[ludicrous] v2 prepare: ${fmt.format(result.rounds)} rounds in ` +
+    `${result.prepareMs.toFixed(1)} ms · ${fmt.format(result.checkpoints)} checkpoints ` +
+    `every ${fmt.format(result.checkpointInterval)} rounds ` +
+    `(${(result.checkpointBytes / 1048576).toFixed(2)} MB)`);
+  state = buildV2State(result, makeNames(players, nameMode, seed));
+  activate();
+  const url = new URL(location.href);
+  url.search = new URLSearchParams({
+    engine: "v2", players, decks, max_rounds: maxRounds,
+    names: nameMode, seed, run: "1",
+  }).toString();
+  history.replaceState(null, "", url);
+}
+
+// One round, reconstructed in the worker. Only one request is ever in
+// flight: a scrub that outruns the engine collapses to its latest position
+// instead of queueing a frame per mousemove.
+function requestV2Round(round) {
+  if (round === 0) {
+    paintWarRound(0, null, {});
+    return;
+  }
+  if (v2RoundInFlight) {
+    v2RoundQueued = round;
+    return;
+  }
+  v2RoundInFlight = true;
+  const gen = loadGen;
+  v2Send({ type: "round", round })
+    .then(({ round: got, json }) => {
+      v2RoundInFlight = false;
+      if (gen !== loadGen) return;
+      const view = json === "null" ? null : JSON.parse(json);
+      if (got === current) paintWarRound(got, view, view ? view.wins : {});
+      const queued = v2RoundQueued;
+      v2RoundQueued = null;
+      if (queued !== null && queued !== got) requestV2Round(queued);
+    })
+    .catch((error) => {
+      v2RoundInFlight = false;
+      v2RoundQueued = null;
+      pause();
+      showError(`Playback failed: ${error.message}`);
+    });
 }
 
 // ------------------------------------------------------------ data loading
@@ -123,10 +323,21 @@ function showResults() {
 async function simulate(event) {
   event.preventDefault();
   if (mode === "batch") return runBatch();
+  const engine = pickEngine();
   const button = $("#simulateBtn");
   button.disabled = true;
   button.textContent = "Simulating…";
   try {
+    if (engine === "v2") {
+      try {
+        await simulateV2();
+        return;
+      } catch (error) {
+        console.warn(
+          "[ludicrous] client-side (v2) engine unavailable — falling back to the server:",
+          error);
+      }
+    }
     const payload = {
       game: gameType,
       players: Number($("#players").value),
@@ -380,9 +591,17 @@ function prepareBlackjack(data) {
 function load(data) {
   pause();
   state = prepare(data);
+  activate();
+}
+
+// Everything that happens once `state` is built, whichever engine built it.
+function activate() {
+  pause();
   current = -1;
   pos = 0;
   winsCache = { round: -1, wins: {} };
+  v2RoundQueued = null;
+  loadGen += 1;
 
   const full = state.mode === "full";
   const blackjack = state.game === "blackjack";
@@ -535,8 +754,16 @@ function render(round) {
 }
 
 function renderWarRound(round) {
-  const roundData = round > 0 ? state.perRound[round] : null;
-  const wins = winsAt(round);
+  // v1 has the whole round index in memory; v2 asks the worker for it and
+  // paints when the answer comes back.
+  if (state.engine === "v2") {
+    requestV2Round(round);
+    return;
+  }
+  paintWarRound(round, round > 0 ? state.perRound[round] : null, winsAt(round));
+}
+
+function paintWarRound(round, roundData, wins) {
   const warPlayers = roundData?.war ? new Set(roundData.war.players) : null;
 
   for (const tile of $("#grid").children) {
@@ -1301,10 +1528,16 @@ window.addEventListener("resize", () => {
 
 // URL parameters: prefill the form, optionally auto-run and jump to a round.
 // e.g. /?players=6&decks=3&seed=1&names=random&run=1&round=42
+//      /?engine=v2&players=6&decks=3&seed=1&run=1   (client-side wasm engine)
 //      /?mode=batch&players=4&decks=1&games=1000&seed=0&run=1
 //      /?game=blackjack&players=4&rounds=100&strategies=basic,hit-below-17&run=1
+//
+// `engine` is the only new key. Absent means v1, so every share URL written
+// before v2 existed still replays through the Python server exactly as it
+// did; `engine=v2` re-simulates in the browser instead.
 (function initFromUrl() {
   const params = new URLSearchParams(location.search);
+  if (params.has("engine")) urlEngine = params.get("engine") === "v2" ? "v2" : "v1";
   if (params.get("game") === "blackjack") setGameType("blackjack");
   if (params.get("mode") === "batch") setMode("batch");
   if (params.has("players")) $("#players").value = params.get("players");
@@ -1321,5 +1554,8 @@ window.addEventListener("resize", () => {
     }
   }
   if (params.has("round")) pendingRound = Number(params.get("round"));
-  if (params.get("run") === "1") $("#setup").requestSubmit();
+  if (params.get("run") === "1") {
+    if (!params.has("engine")) urlEngine = "v1";
+    $("#setup").requestSubmit();
+  }
 })();

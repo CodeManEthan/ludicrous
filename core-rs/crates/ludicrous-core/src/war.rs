@@ -689,6 +689,32 @@ impl<R: GameRng, S: EventSink> WarGame<R, S> {
 
     // ------------------------------------------------------- inspection
 
+    /// How many players are still in.
+    pub fn alive(&self) -> u32 {
+        self.alive
+    }
+
+    /// Per-player card count, id order, written into `out`.
+    ///
+    /// `summary()` carries the same numbers but sorts standings on the way,
+    /// which is too much work to repeat once per sampled round.
+    pub fn card_counts_into(&self, out: &mut Vec<u32>) {
+        out.clear();
+        out.extend(self.players.iter().map(|p| p.card_count()));
+    }
+
+    /// Per-player elimination round, id order, `-1` while still in.
+    pub fn round_out_into(&self, out: &mut Vec<i32>) {
+        out.clear();
+        out.extend(self.players.iter().map(|p| p.round_out));
+    }
+
+    /// Per-player cumulative rounds won, id order.
+    pub fn wins_into(&self, out: &mut Vec<u32>) {
+        out.clear();
+        out.extend(self.players.iter().map(|p| p.wins));
+    }
+
     pub fn standings(&self) -> Vec<u32> {
         let mut alive: Vec<usize> = (0..self.players.len())
             .filter(|&i| self.players[i].in_game)
