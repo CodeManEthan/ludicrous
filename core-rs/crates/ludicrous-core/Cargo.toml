@@ -1,0 +1,17 @@
+[package]
+name = "ludicrous-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+# On by default so `cargo test` exercises the oracle parity suite without a
+# flag. Both shipping crates take this crate with `default-features = false`,
+# so MT19937 never reaches a wasm bundle or a batch worker.
+default = ["cpython-rng"]
+# Test-only: CPython's random.Random (MT19937) so games can be compared
+# bit-for-bit against the retired Python engine. Never enabled in shipping
+# builds -- the v2 seed namespace uses xoshiro256** only.
+cpython-rng = []
+
+[dependencies]

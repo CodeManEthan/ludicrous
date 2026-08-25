@@ -1,0 +1,12 @@
+[package]
+name = "ludicrous-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ludicrous-core = { path = "../ludicrous-core", default-features = false }
+wasm-bindgen = "0.2"

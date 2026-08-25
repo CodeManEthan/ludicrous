@@ -1,0 +1,529 @@
+{"round": 0, "num_players": 5, "num_decks": 1, "player_names": {"1": "Player 1", "2": "Player 2", "3": "Player 3", "4": "Player 4", "5": "Player 5"}, "seed": 11, "type": "GameStarted"}
+{"round": 0, "card_counts": {"1": 11, "2": 11, "3": 10, "4": 10, "5": 10}, "type": "CardsDealt"}
+{"round": 1, "players": [1, 2, 3, 4, 5], "type": "RoundStarted"}
+{"round": 1, "player": 1, "card": [7, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 1, "player": 2, "card": [6, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 1, "player": 3, "card": [6, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 1, "player": 4, "card": [4, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 1, "player": 5, "card": [14, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 1, "winner": 5, "cards_won": 5, "via": "high_card", "type": "RoundWon"}
+{"round": 1, "card_counts": {"1": 10, "2": 10, "3": 9, "4": 9, "5": 14}, "type": "RoundEnded"}
+{"round": 2, "players": [1, 2, 3, 4, 5], "type": "RoundStarted"}
+{"round": 2, "player": 1, "card": [7, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 2, "player": 2, "card": [11, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 2, "player": 3, "card": [12, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 2, "player": 4, "card": [10, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 2, "player": 5, "card": [5, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 2, "winner": 3, "cards_won": 5, "via": "high_card", "type": "RoundWon"}
+{"round": 2, "card_counts": {"1": 9, "2": 9, "3": 13, "4": 8, "5": 13}, "type": "RoundEnded"}
+{"round": 3, "players": [1, 2, 3, 4, 5], "type": "RoundStarted"}
+{"round": 3, "player": 1, "card": [10, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 3, "player": 2, "card": [2, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 3, "player": 3, "card": [13, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 3, "player": 4, "card": [10, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 3, "player": 5, "card": [7, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 3, "winner": 3, "cards_won": 5, "via": "high_card", "type": "RoundWon"}
+{"round": 3, "card_counts": {"1": 8, "2": 8, "3": 17, "4": 7, "5": 12}, "type": "RoundEnded"}
+{"round": 4, "players": [1, 2, 3, 4, 5], "type": "RoundStarted"}
+{"round": 4, "player": 1, "card": [11, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 4, "player": 2, "card": [9, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 4, "player": 3, "card": [8, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 4, "player": 4, "card": [3, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 4, "player": 5, "card": [3, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 4, "winner": 1, "cards_won": 5, "via": "high_card", "type": "RoundWon"}
+{"round": 4, "card_counts": {"1": 12, "2": 7, "3": 16, "4": 6, "5": 11}, "type": "RoundEnded"}
+{"round": 5, "players": [1, 2, 3, 4, 5], "type": "RoundStarted"}
+{"round": 5, "player": 1, "card": [5, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 5, "player": 2, "card": [5, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 5, "player": 3, "card": [2, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 5, "player": 4, "card": [2, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 5, "player": 5, "card": [9, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 5, "winner": 5, "cards_won": 5, "via": "high_card", "type": "RoundWon"}
+{"round": 5, "card_counts": {"1": 11, "2": 6, "3": 15, "4": 5, "5": 15}, "type": "RoundEnded"}
+{"round": 6, "players": [1, 2, 3, 4, 5], "type": "RoundStarted"}
+{"round": 6, "player": 1, "card": [12, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 6, "player": 2, "card": [13, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 6, "player": 3, "card": [12, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 6, "player": 4, "card": [9, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 6, "player": 5, "card": [3, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 6, "winner": 2, "cards_won": 5, "via": "high_card", "type": "RoundWon"}
+{"round": 6, "card_counts": {"1": 10, "2": 10, "3": 14, "4": 4, "5": 14}, "type": "RoundEnded"}
+{"round": 7, "players": [1, 2, 3, 4, 5], "type": "RoundStarted"}
+{"round": 7, "player": 1, "card": [4, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 7, "player": 2, "card": [14, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 7, "player": 3, "card": [4, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 7, "player": 4, "card": [7, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 7, "player": 5, "card": [11, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 7, "winner": 2, "cards_won": 5, "via": "high_card", "type": "RoundWon"}
+{"round": 7, "card_counts": {"1": 9, "2": 14, "3": 13, "4": 3, "5": 13}, "type": "RoundEnded"}
+{"round": 8, "players": [1, 2, 3, 4, 5], "type": "RoundStarted"}
+{"round": 8, "player": 1, "card": [8, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 8, "player": 2, "card": [10, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 8, "player": 3, "card": [8, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 8, "player": 4, "card": [6, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 8, "player": 5, "card": [2, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 8, "winner": 2, "cards_won": 5, "via": "high_card", "type": "RoundWon"}
+{"round": 8, "card_counts": {"1": 8, "2": 18, "3": 12, "4": 2, "5": 12}, "type": "RoundEnded"}
+{"round": 9, "players": [1, 2, 3, 4, 5], "type": "RoundStarted"}
+{"round": 9, "player": 1, "card": [3, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 9, "player": 2, "card": [6, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 9, "player": 3, "card": [9, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 9, "player": 4, "card": [13, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 9, "player": 5, "card": [14, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 9, "winner": 5, "cards_won": 5, "via": "high_card", "type": "RoundWon"}
+{"round": 9, "card_counts": {"1": 7, "2": 17, "3": 11, "4": 1, "5": 16}, "type": "RoundEnded"}
+{"round": 10, "players": [1, 2, 3, 4, 5], "type": "RoundStarted"}
+{"round": 10, "player": 1, "card": [13, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 10, "player": 2, "card": [8, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 10, "player": 3, "card": [14, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 10, "player": 4, "card": [5, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 10, "player": 5, "card": [12, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 10, "winner": 3, "cards_won": 5, "via": "high_card", "type": "RoundWon"}
+{"round": 10, "player": 4, "reason": "out_of_cards", "type": "PlayerEliminated"}
+{"round": 10, "card_counts": {"1": 6, "2": 16, "3": 15, "5": 15}, "type": "RoundEnded"}
+{"round": 11, "players": [1, 2, 3, 5], "type": "RoundStarted"}
+{"round": 11, "player": 1, "card": [11, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 11, "player": 2, "card": [4, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 11, "player": 3, "card": [12, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 11, "player": 5, "card": [4, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 11, "winner": 3, "cards_won": 4, "via": "high_card", "type": "RoundWon"}
+{"round": 11, "card_counts": {"1": 5, "2": 15, "3": 18, "5": 14}, "type": "RoundEnded"}
+{"round": 12, "players": [1, 2, 3, 5], "type": "RoundStarted"}
+{"round": 12, "player": 1, "card": [11, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 12, "player": 2, "card": [4, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 12, "player": 3, "card": [10, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 12, "player": 5, "card": [6, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 12, "winner": 1, "cards_won": 4, "via": "high_card", "type": "RoundWon"}
+{"round": 12, "card_counts": {"1": 8, "2": 14, "3": 17, "5": 13}, "type": "RoundEnded"}
+{"round": 13, "players": [1, 2, 3, 5], "type": "RoundStarted"}
+{"round": 13, "player": 1, "card": [9, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 13, "player": 2, "card": [7, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 13, "player": 3, "card": [7, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 13, "player": 5, "card": [14, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 13, "winner": 5, "cards_won": 4, "via": "high_card", "type": "RoundWon"}
+{"round": 13, "card_counts": {"1": 7, "2": 13, "3": 16, "5": 16}, "type": "RoundEnded"}
+{"round": 14, "players": [1, 2, 3, 5], "type": "RoundStarted"}
+{"round": 14, "player": 1, "card": [8, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 14, "player": 2, "card": [8, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 14, "player": 3, "card": [12, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 14, "player": 5, "card": [2, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 14, "winner": 3, "cards_won": 4, "via": "high_card", "type": "RoundWon"}
+{"round": 14, "card_counts": {"1": 6, "2": 12, "3": 19, "5": 15}, "type": "RoundEnded"}
+{"round": 15, "players": [1, 2, 3, 5], "type": "RoundStarted"}
+{"round": 15, "player": 1, "card": [3, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 15, "player": 2, "card": [10, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 15, "player": 3, "card": [5, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 15, "player": 5, "card": [2, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 15, "winner": 2, "cards_won": 4, "via": "high_card", "type": "RoundWon"}
+{"round": 15, "card_counts": {"1": 5, "2": 15, "3": 18, "5": 14}, "type": "RoundEnded"}
+{"round": 16, "players": [1, 2, 3, 5], "type": "RoundStarted"}
+{"round": 16, "player": 1, "card": [3, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 16, "player": 2, "card": [12, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 16, "player": 3, "card": [7, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 16, "player": 5, "card": [5, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 16, "winner": 2, "cards_won": 4, "via": "high_card", "type": "RoundWon"}
+{"round": 16, "card_counts": {"1": 4, "2": 18, "3": 17, "5": 13}, "type": "RoundEnded"}
+{"round": 17, "players": [1, 2, 3, 5], "type": "RoundStarted"}
+{"round": 17, "player": 1, "card": [6, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 17, "player": 2, "card": [2, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 17, "player": 3, "card": [8, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 17, "player": 5, "card": [7, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 17, "winner": 3, "cards_won": 4, "via": "high_card", "type": "RoundWon"}
+{"round": 17, "card_counts": {"1": 3, "2": 17, "3": 20, "5": 12}, "type": "RoundEnded"}
+{"round": 18, "players": [1, 2, 3, 5], "type": "RoundStarted"}
+{"round": 18, "player": 1, "card": [11, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 18, "player": 2, "card": [12, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 18, "player": 3, "card": [10, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 18, "player": 5, "card": [3, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 18, "winner": 2, "cards_won": 4, "via": "high_card", "type": "RoundWon"}
+{"round": 18, "card_counts": {"1": 2, "2": 20, "3": 19, "5": 11}, "type": "RoundEnded"}
+{"round": 19, "players": [1, 2, 3, 5], "type": "RoundStarted"}
+{"round": 19, "player": 1, "card": [10, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 19, "player": 2, "card": [6, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 19, "player": 3, "card": [14, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 19, "player": 5, "card": [6, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 19, "winner": 3, "cards_won": 4, "via": "high_card", "type": "RoundWon"}
+{"round": 19, "card_counts": {"1": 1, "2": 19, "3": 22, "5": 10}, "type": "RoundEnded"}
+{"round": 20, "players": [1, 2, 3, 5], "type": "RoundStarted"}
+{"round": 20, "player": 1, "card": [4, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 20, "player": 2, "card": [4, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 20, "player": 3, "card": [11, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 20, "player": 5, "card": [14, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 20, "winner": 5, "cards_won": 4, "via": "high_card", "type": "RoundWon"}
+{"round": 20, "player": 1, "reason": "out_of_cards", "type": "PlayerEliminated"}
+{"round": 20, "card_counts": {"2": 18, "3": 21, "5": 13}, "type": "RoundEnded"}
+{"round": 21, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 21, "player": 2, "card": [3, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 21, "player": 3, "card": [10, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 21, "player": 5, "card": [13, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 21, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 21, "card_counts": {"2": 17, "3": 20, "5": 15}, "type": "RoundEnded"}
+{"round": 22, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 22, "player": 2, "card": [9, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 22, "player": 3, "card": [2, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 22, "player": 5, "card": [5, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 22, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 22, "card_counts": {"2": 19, "3": 19, "5": 14}, "type": "RoundEnded"}
+{"round": 23, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 23, "player": 2, "card": [8, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 23, "player": 3, "card": [5, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 23, "player": 5, "card": [6, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 23, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 23, "card_counts": {"2": 21, "3": 18, "5": 13}, "type": "RoundEnded"}
+{"round": 24, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 24, "player": 2, "card": [11, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 24, "player": 3, "card": [13, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 24, "player": 5, "card": [9, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 24, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 24, "card_counts": {"2": 20, "3": 20, "5": 12}, "type": "RoundEnded"}
+{"round": 25, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 25, "player": 2, "card": [13, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 25, "player": 3, "card": [13, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 25, "player": 5, "card": [9, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 25, "players": [2, 3], "rank": 13, "depth": 1, "tiebreaker": "Default", "type": "WarDeclared"}
+{"round": 25, "player": 2, "card": [14, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 25, "player": 2, "card": [8, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 25, "player": 2, "card": [7, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 25, "player": 2, "card": [6, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 25, "player": 3, "card": [4, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 25, "player": 3, "card": [6, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 25, "player": 3, "card": [14, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 25, "player": 3, "card": [8, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 25, "winner": 3, "cards_won": 11, "via": "war", "type": "RoundWon"}
+{"round": 25, "card_counts": {"2": 15, "3": 26, "5": 11}, "type": "RoundEnded"}
+{"round": 26, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 26, "player": 2, "card": [3, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 26, "player": 3, "card": [8, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 26, "player": 5, "card": [13, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 26, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 26, "card_counts": {"2": 14, "3": 25, "5": 13}, "type": "RoundEnded"}
+{"round": 27, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 27, "player": 2, "card": [3, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 27, "player": 3, "card": [7, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 27, "player": 5, "card": [10, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 27, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 27, "card_counts": {"2": 13, "3": 24, "5": 15}, "type": "RoundEnded"}
+{"round": 28, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 28, "player": 2, "card": [5, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 28, "player": 3, "card": [2, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 28, "player": 5, "card": [7, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 28, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 28, "card_counts": {"2": 12, "3": 23, "5": 17}, "type": "RoundEnded"}
+{"round": 29, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 29, "player": 2, "card": [12, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 29, "player": 3, "card": [13, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 29, "player": 5, "card": [4, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 29, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 29, "card_counts": {"2": 11, "3": 25, "5": 16}, "type": "RoundEnded"}
+{"round": 30, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 30, "player": 2, "card": [12, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 30, "player": 3, "card": [12, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 30, "player": 5, "card": [7, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 30, "players": [2, 3], "rank": 12, "depth": 1, "tiebreaker": "Default", "type": "WarDeclared"}
+{"round": 30, "player": 2, "card": [2, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 30, "player": 2, "card": [2, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 30, "player": 2, "card": [11, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 30, "player": 2, "card": [10, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 30, "player": 3, "card": [4, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 30, "player": 3, "card": [11, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 30, "player": 3, "card": [8, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 30, "player": 3, "card": [2, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 30, "winner": 2, "cards_won": 11, "via": "war", "type": "RoundWon"}
+{"round": 30, "card_counts": {"2": 17, "3": 20, "5": 15}, "type": "RoundEnded"}
+{"round": 31, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 31, "player": 2, "card": [5, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 31, "player": 3, "card": [10, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 31, "player": 5, "card": [3, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 31, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 31, "card_counts": {"2": 16, "3": 22, "5": 14}, "type": "RoundEnded"}
+{"round": 32, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 32, "player": 2, "card": [5, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 32, "player": 3, "card": [9, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 32, "player": 5, "card": [11, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 32, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 32, "card_counts": {"2": 15, "3": 21, "5": 16}, "type": "RoundEnded"}
+{"round": 33, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 33, "player": 2, "card": [9, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 33, "player": 3, "card": [6, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 33, "player": 5, "card": [9, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 33, "players": [2, 5], "rank": 9, "depth": 1, "tiebreaker": "Default", "type": "WarDeclared"}
+{"round": 33, "player": 2, "card": [5, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 33, "player": 2, "card": [10, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 33, "player": 2, "card": [3, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 33, "player": 2, "card": [10, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 33, "player": 5, "card": [4, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 33, "player": 5, "card": [14, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 33, "player": 5, "card": [14, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 33, "player": 5, "card": [7, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 33, "winner": 2, "cards_won": 11, "via": "war", "type": "RoundWon"}
+{"round": 33, "card_counts": {"2": 21, "3": 20, "5": 11}, "type": "RoundEnded"}
+{"round": 34, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 34, "player": 2, "card": [8, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 34, "player": 3, "card": [11, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 34, "player": 5, "card": [3, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 34, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 34, "card_counts": {"2": 20, "3": 22, "5": 10}, "type": "RoundEnded"}
+{"round": 35, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 35, "player": 2, "card": [4, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 35, "player": 3, "card": [12, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 35, "player": 5, "card": [3, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 35, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 35, "card_counts": {"2": 19, "3": 24, "5": 9}, "type": "RoundEnded"}
+{"round": 36, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 36, "player": 2, "card": [11, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 36, "player": 3, "card": [6, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 36, "player": 5, "card": [7, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 36, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 36, "card_counts": {"2": 21, "3": 23, "5": 8}, "type": "RoundEnded"}
+{"round": 37, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 37, "player": 2, "card": [7, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 37, "player": 3, "card": [8, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 37, "player": 5, "card": [9, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 37, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 37, "card_counts": {"2": 20, "3": 22, "5": 10}, "type": "RoundEnded"}
+{"round": 38, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 38, "player": 2, "card": [2, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 38, "player": 3, "card": [14, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 38, "player": 5, "card": [10, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 38, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 38, "card_counts": {"2": 19, "3": 24, "5": 9}, "type": "RoundEnded"}
+{"round": 39, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 39, "player": 2, "card": [12, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 39, "player": 3, "card": [12, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 39, "player": 5, "card": [8, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 39, "players": [2, 3], "rank": 12, "depth": 1, "tiebreaker": "Default", "type": "WarDeclared"}
+{"round": 39, "player": 2, "card": [11, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 2, "card": [2, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 2, "card": [2, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 2, "card": [12, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 39, "player": 3, "card": [3, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 3, "card": [4, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 3, "card": [5, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 3, "card": [12, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 39, "players": [2, 3], "rank": 12, "depth": 2, "tiebreaker": "Default", "type": "WarDeclared"}
+{"round": 39, "player": 2, "card": [14, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 2, "card": [6, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 2, "card": [7, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 2, "card": [9, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 39, "player": 3, "card": [14, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 3, "card": [8, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 3, "card": [6, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 39, "player": 3, "card": [4, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 39, "winner": 2, "cards_won": 19, "via": "war", "type": "RoundWon"}
+{"round": 39, "card_counts": {"2": 29, "3": 15, "5": 8}, "type": "RoundEnded"}
+{"round": 40, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 40, "player": 2, "card": [10, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 40, "player": 3, "card": [3, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 40, "player": 5, "card": [5, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 40, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 40, "card_counts": {"2": 31, "3": 14, "5": 7}, "type": "RoundEnded"}
+{"round": 41, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 41, "player": 2, "card": [3, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 41, "player": 3, "card": [13, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 41, "player": 5, "card": [11, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 41, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 41, "card_counts": {"2": 30, "3": 16, "5": 6}, "type": "RoundEnded"}
+{"round": 42, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 42, "player": 2, "card": [7, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 42, "player": 3, "card": [13, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 42, "player": 5, "card": [2, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 42, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 42, "card_counts": {"2": 29, "3": 18, "5": 5}, "type": "RoundEnded"}
+{"round": 43, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 43, "player": 2, "card": [4, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 43, "player": 3, "card": [11, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 43, "player": 5, "card": [5, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 43, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 43, "card_counts": {"2": 28, "3": 20, "5": 4}, "type": "RoundEnded"}
+{"round": 44, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 44, "player": 2, "card": [5, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 44, "player": 3, "card": [9, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 44, "player": 5, "card": [13, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 44, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 44, "card_counts": {"2": 27, "3": 19, "5": 6}, "type": "RoundEnded"}
+{"round": 45, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 45, "player": 2, "card": [11, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 45, "player": 3, "card": [10, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 45, "player": 5, "card": [5, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 45, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 45, "card_counts": {"2": 29, "3": 18, "5": 5}, "type": "RoundEnded"}
+{"round": 46, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 46, "player": 2, "card": [6, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 46, "player": 3, "card": [13, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 46, "player": 5, "card": [9, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 46, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 46, "card_counts": {"2": 28, "3": 20, "5": 4}, "type": "RoundEnded"}
+{"round": 47, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 47, "player": 2, "card": [9, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 47, "player": 3, "card": [3, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 47, "player": 5, "card": [13, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 47, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 47, "card_counts": {"2": 27, "3": 19, "5": 6}, "type": "RoundEnded"}
+{"round": 48, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 48, "player": 2, "card": [14, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 48, "player": 3, "card": [8, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 48, "player": 5, "card": [9, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 48, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 48, "card_counts": {"2": 29, "3": 18, "5": 5}, "type": "RoundEnded"}
+{"round": 49, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 49, "player": 2, "card": [10, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 49, "player": 3, "card": [4, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 49, "player": 5, "card": [7, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 49, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 49, "card_counts": {"2": 31, "3": 17, "5": 4}, "type": "RoundEnded"}
+{"round": 50, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 50, "player": 2, "card": [3, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 50, "player": 3, "card": [7, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 50, "player": 5, "card": [8, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 50, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 50, "card_counts": {"2": 30, "3": 16, "5": 6}, "type": "RoundEnded"}
+{"round": 51, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 51, "player": 2, "card": [9, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 51, "player": 3, "card": [6, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 51, "player": 5, "card": [8, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 51, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 51, "card_counts": {"2": 32, "3": 15, "5": 5}, "type": "RoundEnded"}
+{"round": 52, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 52, "player": 2, "card": [12, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 52, "player": 3, "card": [11, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 52, "player": 5, "card": [7, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 52, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 52, "card_counts": {"2": 34, "3": 14, "5": 4}, "type": "RoundEnded"}
+{"round": 53, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 53, "player": 2, "card": [11, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 53, "player": 3, "card": [13, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 53, "player": 5, "card": [3, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 53, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 53, "card_counts": {"2": 33, "3": 16, "5": 3}, "type": "RoundEnded"}
+{"round": 54, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 54, "player": 2, "card": [10, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 54, "player": 3, "card": [13, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 54, "player": 5, "card": [9, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 54, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 54, "card_counts": {"2": 32, "3": 18, "5": 2}, "type": "RoundEnded"}
+{"round": 55, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 55, "player": 2, "card": [10, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 55, "player": 3, "card": [7, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 55, "player": 5, "card": [3, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 55, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 55, "card_counts": {"2": 34, "3": 17, "5": 1}, "type": "RoundEnded"}
+{"round": 56, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 56, "player": 2, "card": [6, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 56, "player": 3, "card": [6, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 56, "player": 5, "card": [13, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 56, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 56, "card_counts": {"2": 33, "3": 16, "5": 3}, "type": "RoundEnded"}
+{"round": 57, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 57, "player": 2, "card": [4, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 57, "player": 3, "card": [3, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 57, "player": 5, "card": [6, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 57, "winner": 5, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 57, "card_counts": {"2": 32, "3": 15, "5": 5}, "type": "RoundEnded"}
+{"round": 58, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 58, "player": 2, "card": [6, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 58, "player": 3, "card": [9, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 58, "player": 5, "card": [6, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 58, "winner": 3, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 58, "card_counts": {"2": 31, "3": 17, "5": 4}, "type": "RoundEnded"}
+{"round": 59, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 59, "player": 2, "card": [14, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 59, "player": 3, "card": [14, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 59, "player": 5, "card": [13, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 59, "players": [2, 3], "rank": 14, "depth": 1, "tiebreaker": "Default", "type": "WarDeclared"}
+{"round": 59, "player": 2, "card": [8, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 59, "player": 2, "card": [4, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 59, "player": 2, "card": [7, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 59, "player": 2, "card": [12, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 59, "player": 3, "card": [4, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 59, "player": 3, "card": [13, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 59, "player": 3, "card": [10, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 59, "player": 3, "card": [2, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 59, "winner": 2, "cards_won": 11, "via": "war", "type": "RoundWon"}
+{"round": 59, "card_counts": {"2": 37, "3": 12, "5": 3}, "type": "RoundEnded"}
+{"round": 60, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 60, "player": 2, "card": [14, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 60, "player": 3, "card": [5, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 60, "player": 5, "card": [4, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 60, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 60, "card_counts": {"2": 39, "3": 11, "5": 2}, "type": "RoundEnded"}
+{"round": 61, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 61, "player": 2, "card": [11, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 61, "player": 3, "card": [11, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 61, "player": 5, "card": [3, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 61, "players": [2, 3], "rank": 11, "depth": 1, "tiebreaker": "Default", "type": "WarDeclared"}
+{"round": 61, "player": 2, "card": [12, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 61, "player": 2, "card": [7, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 61, "player": 2, "card": [5, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 61, "player": 2, "card": [5, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 61, "player": 3, "card": [2, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 61, "player": 3, "card": [13, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 61, "player": 3, "card": [10, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 61, "player": 3, "card": [3, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 61, "winner": 2, "cards_won": 11, "via": "war", "type": "RoundWon"}
+{"round": 61, "card_counts": {"2": 45, "3": 6, "5": 1}, "type": "RoundEnded"}
+{"round": 62, "players": [2, 3, 5], "type": "RoundStarted"}
+{"round": 62, "player": 2, "card": [8, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 62, "player": 3, "card": [6, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 62, "player": 5, "card": [6, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 62, "winner": 2, "cards_won": 3, "via": "high_card", "type": "RoundWon"}
+{"round": 62, "player": 5, "reason": "out_of_cards", "type": "PlayerEliminated"}
+{"round": 62, "card_counts": {"2": 47, "3": 5}, "type": "RoundEnded"}
+{"round": 63, "players": [2, 3], "type": "RoundStarted"}
+{"round": 63, "player": 2, "card": [2, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 63, "player": 3, "card": [9, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 63, "winner": 3, "cards_won": 2, "via": "high_card", "type": "RoundWon"}
+{"round": 63, "card_counts": {"2": 46, "3": 6}, "type": "RoundEnded"}
+{"round": 64, "players": [2, 3], "type": "RoundStarted"}
+{"round": 64, "player": 2, "card": [4, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 64, "player": 3, "card": [9, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 64, "winner": 3, "cards_won": 2, "via": "high_card", "type": "RoundWon"}
+{"round": 64, "card_counts": {"2": 45, "3": 7}, "type": "RoundEnded"}
+{"round": 65, "players": [2, 3], "type": "RoundStarted"}
+{"round": 65, "player": 2, "card": [8, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 65, "player": 3, "card": [13, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 65, "winner": 3, "cards_won": 2, "via": "high_card", "type": "RoundWon"}
+{"round": 65, "card_counts": {"2": 44, "3": 8}, "type": "RoundEnded"}
+{"round": 66, "players": [2, 3], "type": "RoundStarted"}
+{"round": 66, "player": 2, "card": [14, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 66, "player": 3, "card": [11, "Hearts"], "face_up": true, "type": "CardPlayed"}
+{"round": 66, "winner": 2, "cards_won": 2, "via": "high_card", "type": "RoundWon"}
+{"round": 66, "card_counts": {"2": 45, "3": 7}, "type": "RoundEnded"}
+{"round": 67, "players": [2, 3], "type": "RoundStarted"}
+{"round": 67, "player": 2, "card": [5, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 67, "player": 3, "card": [6, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 67, "winner": 3, "cards_won": 2, "via": "high_card", "type": "RoundWon"}
+{"round": 67, "card_counts": {"2": 44, "3": 8}, "type": "RoundEnded"}
+{"round": 68, "players": [2, 3], "type": "RoundStarted"}
+{"round": 68, "player": 2, "card": [2, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 68, "player": 3, "card": [2, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 68, "players": [2, 3], "rank": 2, "depth": 1, "tiebreaker": "Default", "type": "WarDeclared"}
+{"round": 68, "player": 2, "card": [10, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 68, "player": 2, "card": [12, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 68, "player": 2, "card": [3, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 68, "player": 2, "card": [9, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 68, "player": 3, "card": [9, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 68, "player": 3, "card": [6, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 68, "player": 3, "card": [5, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 68, "player": 3, "card": [4, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 68, "winner": 2, "cards_won": 10, "via": "war", "type": "RoundWon"}
+{"round": 68, "card_counts": {"2": 49, "3": 3}, "type": "RoundEnded"}
+{"round": 69, "players": [2, 3], "type": "RoundStarted"}
+{"round": 69, "player": 2, "card": [8, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 69, "player": 3, "card": [13, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 69, "winner": 3, "cards_won": 2, "via": "high_card", "type": "RoundWon"}
+{"round": 69, "card_counts": {"2": 48, "3": 4}, "type": "RoundEnded"}
+{"round": 70, "players": [2, 3], "type": "RoundStarted"}
+{"round": 70, "player": 2, "card": [9, "Diamonds"], "face_up": true, "type": "CardPlayed"}
+{"round": 70, "player": 3, "card": [9, "Spades"], "face_up": true, "type": "CardPlayed"}
+{"round": 70, "players": [2, 3], "rank": 9, "depth": 1, "tiebreaker": "Forfeit", "type": "WarDeclared"}
+{"round": 70, "player": 2, "card": [4, "Spades"], "face_up": false, "type": "CardPlayed"}
+{"round": 70, "player": 2, "card": [12, "Hearts"], "face_up": false, "type": "CardPlayed"}
+{"round": 70, "player": 2, "card": [10, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 70, "player": 2, "card": [5, "Clubs"], "face_up": true, "type": "CardPlayed"}
+{"round": 70, "player": 3, "card": [8, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 70, "player": 3, "card": [13, "Diamonds"], "face_up": false, "type": "CardPlayed"}
+{"round": 70, "player": 3, "card": [8, "Clubs"], "face_up": false, "type": "CardPlayed"}
+{"round": 70, "player": 3, "reason": "insufficient_for_war", "type": "PlayerEliminated"}
+{"round": 70, "winner": 2, "cards_won": 9, "via": "forfeit", "type": "RoundWon"}
+{"round": 70, "card_counts": {"2": 52}, "type": "RoundEnded"}
+{"round": 70, "winner": 2, "total_rounds": 70, "type": "GameOver"}

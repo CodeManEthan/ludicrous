@@ -1,0 +1,12 @@
+[package]
+name = "ludicrous-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "lud-bench"
+path = "src/main.rs"
+
+[dependencies]
+ludicrous-core = { path = "../ludicrous-core", default-features = false }
