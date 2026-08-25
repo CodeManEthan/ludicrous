@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ludicrous — games at impossible scale</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%83%8F%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -81,9 +82,15 @@
         <input id="scrubber" type="range" min="0" max="1" value="0" step="1">
         <span id="roundLabel" class="round-label">Round 0</span>
         <label class="chk"><input id="pauseElim" type="checkbox" checked> pause on eliminations</label>
+        <span id="pauseNote" hidden>paused on an elimination — space resumes</span>
+        <button id="skipBtn" class="btn" type="button" hidden
+                title="Jump to the end and reveal the winner, the chart, and the stats">Skip to results</button>
       </div>
       <div id="banner" class="banner">&nbsp;</div>
+      <div id="finale" class="finale" hidden></div>
     </section>
+
+    <section id="unfinishedNote" class="panel note warn" hidden></section>
 
     <section id="table" class="panel">
       <div id="dealerArea" class="dealer-area" hidden></div>
@@ -145,9 +152,19 @@
   </main>
 
   <div id="welcome" class="welcome">
-    Configure a game and hit <b>Simulate</b> — the whole game runs instantly,
-    then you can play it back at any speed, scrub it like a video, and see how
-    the card counts evolved.
+    Configure a game and hit <b id="welcomeAction">Simulate</b> — the whole game
+    runs instantly, then you can play it back at any speed, scrub it like a
+    video, and see how the card counts evolved.
+  </div>
+
+  <div id="loading" class="loading" hidden>
+    <div class="card">
+      <div class="spinner"></div>
+      <div id="loadingTitle">Simulating…</div>
+      <div id="loadingElapsed">&nbsp;</div>
+      <div id="loadingNote" hidden></div>
+      <button id="loadingCancel" class="btn" type="button">Cancel</button>
+    </div>
   </div>
 
   <div id="error" class="error" hidden></div>

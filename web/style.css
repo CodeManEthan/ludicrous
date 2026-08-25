@@ -418,5 +418,54 @@ main {
   color: #ffd7d7;
   padding: 10px 18px;
   border-radius: 10px;
-  z-index: 10;
+  z-index: 50;
 }
+
+/* --- loading overlay (server-side runs: v1 games and batches) --- */
+.loading {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 13, 13, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+.loading .card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 280px;
+  max-width: 380px;
+  padding: 24px 30px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: center;
+}
+.loading .spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--grid-line);
+  border-top-color: var(--s1);
+  border-radius: 50%;
+  animation: lud-spin 0.9s linear infinite;
+}
+@keyframes lud-spin { to { transform: rotate(360deg); } }
+#loadingTitle { font-size: 15px; color: var(--ink); }
+#loadingElapsed { color: var(--muted); font-variant-numeric: tabular-nums; min-height: 20px; }
+#loadingNote { color: #e5c894; font-size: 12px; line-height: 1.5; }
+
+/* --- suspense mode --- */
+.finale {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 16px;
+  color: var(--ink);
+}
+.finale .win-name { color: var(--good); font-weight: 700; }
+#skipBtn { margin-left: auto; }
+#pauseNote { color: var(--muted); font-size: 12px; }
+.tile .value.masked { color: var(--muted); }
