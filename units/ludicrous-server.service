@@ -1,0 +1,43 @@
+# ludicrous: the local web UI for the card-game engine -- serves web/, card images from
+# cards/, and one POST /api/simulate endpoint that returns a game recording.
+#
+# ON-DEMAND. Installed and registered but NOT enabled; the registry row is PAUSED, which
+# says the identity is known and is not expected up. A stopped game server raises no alert
+# because stopped is its normal state.
+#
+#   overseer service start ludicrous ludicrous-server
+#   overseer service stop  ludicrous ludicrous-server
+#
+# NO HEARTBEAT PATCH, deliberately: a paused row is never read for freshness. systemd's
+# ActiveState, shown beside the heartbeat by `overseer service status`, carries the truth.
+#
+# Logs: journalctl --user -u ludicrous-server
+
+[Unit]
+Description=Ludicrous game server (ThreadingHTTPServer on 127.0.0.1:8000)
+Documentation=file:/home/jpluto/projects/ludicrous/README.md
+
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jpluto/projects/ludicrous
+# The SYSTEM interpreter, not the project's venv/. server.py's own docstring says
+# "Standard library only -- no dependencies", and the tree's venv/ holds nothing but pip:
+# pointing at it would imply a dependency set that does not exist. Verified: `import
+# engine, random_names` succeeds on /usr/bin/python3.
+#
+# --host 127.0.0.1 is passed EXPLICITLY even though it is server.py's default. A game
+# server that quietly started answering on 0.0.0.0 after an upstream default changed is
+# the kind of surprise a unit file should foreclose, not inherit.
+ExecStart=/usr/bin/python3 server.py --host 127.0.0.1 --port 8000
+
+Restart=on-failure
+RestartSec=5
+
+KillMode=mixed
+TimeoutStopSec=20
+NoNewPrivileges=yes
+
+# NO [Install] SECTION, deliberately: nothing should pull a game server up at login.
