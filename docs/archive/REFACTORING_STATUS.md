@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Archived status report on centralising the tkinter app's print statements into debug_output.py — files refactored, the module's function categories, before/after usage examples, and the pending GUI test list."
+tags: [build-report, architecture, testing]
+updated: 2025-12-02
+---
+
 # War Card Game Refactoring Status Report
 
 ## Project Overview

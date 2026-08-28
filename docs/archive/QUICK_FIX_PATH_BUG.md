@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Archived one-page fix guide for the tkinter app's hardcoded Windows backslashes in card_images.py — the three broken lines, their pathlib replacements, the os.path.join alternative, and how to verify."
+tags: [troubleshooting, filesystem]
+updated: 2025-12-02
+---
+
 # Quick Fix Guide - Cross-Platform Compatibility
 
 ## The Critical Bug

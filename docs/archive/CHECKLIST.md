@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Archived task checklist for making the tkinter War_Card_Game_V3 presentable: path-bug fix, standard project files, file reorganisation, cross-platform test matrix, optional polish, and pre-publish checks with time estimates."
+tags: [checklist, troubleshooting, testing]
+updated: 2025-12-02
+---
+
 # Making War Card Game V3 Presentable - Checklist
 
 ## Critical Fixes (Must Do) ✅

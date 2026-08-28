@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Archived deep dive on the tkinter app's layout problems and a full migration guide from .place() to grid: proposed frame hierarchy, step-by-step code, responsive card sizing, resize handling, and a phased migration strategy."
+tags: [howto, ui, window-management]
+updated: 2025-12-02
+---
+
 # UI Layout Deep Dive
 
 ## Current Layout System Issues

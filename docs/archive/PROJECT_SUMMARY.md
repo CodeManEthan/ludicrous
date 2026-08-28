@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Archived hand-off summary of the tkinter app: what exists, the cross-platform path bug and its three-line fix, an index of the docs generated alongside it, a strengths/weaknesses assessment, and the root-cause diagnosis of the UI layout trouble."
+tags: [survey, architecture, ui]
+updated: 2025-12-02
+---
+
 # War Card Game V3 - Project Summary
 
 ## What You Have

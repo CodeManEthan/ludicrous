@@ -1,3 +1,11 @@
+---
+type: repo-readme
+project: ludicrous
+description: "Top-level README for Ludicrous: card games (War, Blackjack) simulated at absurd scale by a dependency-free Python engine, played back in the browser — features, quickstart, CLI, rules, project layout, history of the tkinter-to-headless rebuild."
+tags: [reference, simulation, cli, ui]
+updated: 2026-07-30
+---
+
 # Ludicrous
 
 Games at impossible scale. Take a game meant for a kitchen table — War,

@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Developer reference for the headless `engine/` package: module layout, WarGame/BlackjackGame APIs, the Strategy interface and measured EVs, batch simulation entry points, the full event vocabulary and JSON recording format, and rules parity with the retired tkinter version."
+tags: [reference, architecture, simulation]
+updated: 2026-07-28
+---
+
 # Headless Engine (`engine/`)
 
 The `engine` package is the games' backend: pure Python, no GUI imports. It

@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Archived module-by-module map of the retired tkinter app — entry point, Main_Game data model, GUI/logic/utility modules, the startup-to-game-loop data flow, and the design patterns it used."
+tags: [reference, architecture, ui]
+updated: 2025-12-02
+---
+
 # Project Architecture Overview
 
 ## Module Breakdown

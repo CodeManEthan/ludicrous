@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Archived line-by-line record of session 2 of the debug refactor: every debug_print call missing the `game` parameter, listed per file with old and new call signatures, plus the verification performed."
+tags: [build-report, architecture, troubleshooting]
+updated: 2025-12-02
+---
+
 # Refactoring Fixes - Session 2
 
 ## Date: December 2, 2024

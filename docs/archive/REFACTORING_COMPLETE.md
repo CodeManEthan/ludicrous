@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Archived completion report for the tkinter app's debug_output.py refactor — the 13 files verified free of raw prints, files created/modified, how to toggle debug output, and the functional test checklist left open."
+tags: [build-report, architecture, testing]
+updated: 2025-12-02
+---
+
 # REFACTORING COMPLETE ✅
 
 ## Summary

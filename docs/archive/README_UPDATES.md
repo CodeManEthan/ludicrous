@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Archived change log of one editing pass over the tkinter app's README: player count raised to 100, multi-deck support documented, Linux tkinter install notes, and revised known issues."
+tags: [build-report, simulation]
+updated: 2025-12-02
+---
+
 # README.md Updates - Change Log
 
 ## Changes Made

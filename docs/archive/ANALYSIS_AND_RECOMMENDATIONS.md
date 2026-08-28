@@ -1,3 +1,11 @@
+---
+type: repo-doc
+project: ludicrous
+description: "Archived code review of the retired tkinter War_Card_Game_V3: the Windows path-separator bug as the primary defect, missing standard project files, tkinter layout critique, and a colour-coded priority list with time estimates."
+tags: [review, architecture, ui, troubleshooting]
+updated: 2025-12-02
+---
+
 # War Card Game V3 - Analysis and Recommendations
 
 ## Overview
