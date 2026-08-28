@@ -116,6 +116,10 @@ pub struct Summary {
     pub wars: u64,
     pub deepest_war: u32,
     pub biggest_pot: u32,
+    /// Round of the first war that reached deepest_war depth; 0 = no wars.
+    pub deepest_war_round: u32,
+    /// Round the biggest pot was won; 0 = no rounds played.
+    pub biggest_pot_round: u32,
     pub winner: Option<u32>,
     pub standings: Vec<u32>,
     pub eliminations: u32,
@@ -140,6 +144,10 @@ pub struct WarGame<R: GameRng = Xoshiro256ss, S: EventSink = NullSink> {
     pub(crate) war_count: u64,
     pub(crate) deepest_war: u32,
     pub(crate) biggest_pot: u32,
+    // Highlight metadata: when the records above were set. Checkpointed
+    // like every other stat, so restore+replay reproduces them exactly.
+    pub(crate) deepest_war_round: u32,
+    pub(crate) biggest_pot_round: u32,
     pub(crate) winner: Option<u32>,
     pub(crate) is_over: bool,
     pub(crate) started: bool,
@@ -190,6 +198,8 @@ impl<R: GameRng, S: EventSink> WarGame<R, S> {
             war_count: 0,
             deepest_war: 0,
             biggest_pot: 0,
+            deepest_war_round: 0,
+            biggest_pot_round: 0,
             winner: None,
             is_over: false,
             started: false,
@@ -443,6 +453,7 @@ impl<R: GameRng, S: EventSink> WarGame<R, S> {
             self.war_count += 1;
             if depth > self.deepest_war {
                 self.deepest_war = depth;
+                self.deepest_war_round = rnd;
             }
 
             let mut with4 = 0u32;
@@ -540,6 +551,7 @@ impl<R: GameRng, S: EventSink> WarGame<R, S> {
             let pot = self.table.len() as u32;
             if pot > self.biggest_pot {
                 self.biggest_pot = pot;
+                self.biggest_pot_round = rnd;
             }
             for k in 0..self.table.len() {
                 let card = self.table[k];
@@ -752,6 +764,8 @@ impl<R: GameRng, S: EventSink> WarGame<R, S> {
             wars: self.war_count,
             deepest_war: self.deepest_war,
             biggest_pot: self.biggest_pot,
+            deepest_war_round: self.deepest_war_round,
+            biggest_pot_round: self.biggest_pot_round,
             winner: self.winner,
             standings: self.standings(),
             eliminations: self.players.iter().filter(|p| !p.in_game).count() as u32,

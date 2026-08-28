@@ -22,10 +22,10 @@
         </select>
       </label>
       <label id="playersLabel">Players
-        <input id="players" type="number" min="2" max="100" value="6">
+        <input id="players" type="number" min="2" max="100" value="6" title="2–100">
       </label>
       <label>Decks
-        <input id="decks" type="number" min="1" max="100" value="3">
+        <input id="decks" type="number" min="1" max="100" value="3" title="1–100">
       </label>
       <label id="roundsLabel" hidden>Rounds
         <input id="rounds" type="number" min="1" max="10000" value="100">
@@ -83,16 +83,34 @@
         <span id="roundLabel" class="round-label">Round 0</span>
         <label class="chk"><input id="pauseElim" type="checkbox" checked> pause on eliminations</label>
         <span id="pauseNote" hidden>paused on an elimination — space resumes</span>
+        <button id="reelBtn" class="btn" type="button" hidden
+                title="Play the game's key moments — eliminations, the deepest war, the biggest pot, lead changes">▶ Highlights</button>
         <button id="skipBtn" class="btn" type="button" hidden
                 title="Jump to the end and reveal the winner, the chart, and the stats">Skip to results</button>
       </div>
       <div id="banner" class="banner">&nbsp;</div>
+      <div id="highlights" class="highlights" hidden></div>
       <div id="finale" class="finale" hidden></div>
     </section>
 
     <section id="unfinishedNote" class="panel note warn" hidden></section>
 
     <section id="table" class="panel">
+      <div class="section-title table-bar">
+        <span id="tableTitle">The table</span>
+        <span class="hint" id="tableHint"></span>
+        <span class="table-controls">
+          <label class="chk sel" id="elimDisplayLabel">eliminated players
+            <select id="elimDisplay">
+              <option value="keep" selected>stay, dimmed</option>
+              <option value="linger">hide after a while</option>
+              <option value="hide">hide right away</option>
+            </select>
+          </label>
+          <button id="swapBtn" class="btn icon" type="button" title="Swap the cards and the chart">⇅ chart first</button>
+          <button id="collapseBtn" class="btn icon" type="button" title="Collapse the cards">−</button>
+        </span>
+      </div>
       <div id="dealerArea" class="dealer-area" hidden></div>
       <div id="grid" class="grid"></div>
     </section>
@@ -161,6 +179,8 @@
     <div class="card">
       <div class="spinner"></div>
       <div id="loadingTitle">Simulating…</div>
+      <div class="pbar" id="loadingBarWrap" hidden><div id="loadingBar"></div></div>
+      <div id="loadingCount" hidden></div>
       <div id="loadingElapsed">&nbsp;</div>
       <div id="loadingNote" hidden></div>
       <button id="loadingCancel" class="btn" type="button">Cancel</button>

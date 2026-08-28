@@ -5,7 +5,7 @@
 //! ```text
 //! offset  size  field
 //!      0     4  magic "LUDW"
-//!      4     1  format version (1)
+//!      4     1  format version (2)
 //!      5     1  game id (0 = War)
 //!      6     2  num_players
 //!      8     2  num_decks
@@ -16,10 +16,12 @@
 //!     62     8  war_count
 //!     70     4  deepest_war
 //!     74     4  biggest_pot
-//!     78     4  winner (0 = none)
-//!     82     1  flags: bit0 is_over, bit1 started
-//!     83     2  table length
-//!     85     n  table cards, one byte each
+//!     78     4  deepest_war_round (0 = no wars yet)
+//!     82     4  biggest_pot_round (0 = no rounds yet)
+//!     86     4  winner (0 = none)
+//!     90     1  flags: bit0 is_over, bit1 started
+//!     91     2  table length
+//!     93     n  table cards, one byte each
 //!  then per player, in id order, 11 bytes of metadata:
 //!            1  in_game
 //!            2  round_out + 1 (0 = still in)
@@ -40,9 +42,9 @@ use crate::war::{Config, Player, WarGame};
 use crate::events::EventSink;
 
 pub const MAGIC: [u8; 4] = *b"LUDW";
-pub const VERSION: u8 = 1;
+pub const VERSION: u8 = 2;
 pub const GAME_WAR: u8 = 0;
-pub const HEADER_LEN: usize = 85;
+pub const HEADER_LEN: usize = 93;
 pub const PLAYER_META_LEN: usize = 11;
 
 #[derive(Debug)]
@@ -114,6 +116,8 @@ impl<S: EventSink> WarGame<Xoshiro256ss, S> {
         put_u64(&mut out, self.war_count);
         put_u32(&mut out, self.deepest_war);
         put_u32(&mut out, self.biggest_pot);
+        put_u32(&mut out, self.deepest_war_round);
+        put_u32(&mut out, self.biggest_pot_round);
         put_u32(&mut out, self.winner.unwrap_or(0));
         let flags = (self.is_over as u8) | ((self.started as u8) << 1);
         out.push(flags);
@@ -165,6 +169,8 @@ impl<S: EventSink> WarGame<Xoshiro256ss, S> {
         let war_count = r.u64()?;
         let deepest_war = r.u32()?;
         let biggest_pot = r.u32()?;
+        let deepest_war_round = r.u32()?;
+        let biggest_pot_round = r.u32()?;
         let winner_raw = r.u32()?;
         let flags = r.u8()?;
         let table_len = r.u16()? as usize;
@@ -181,6 +187,8 @@ impl<S: EventSink> WarGame<Xoshiro256ss, S> {
         g.war_count = war_count;
         g.deepest_war = deepest_war;
         g.biggest_pot = biggest_pot;
+        g.deepest_war_round = deepest_war_round;
+        g.biggest_pot_round = biggest_pot_round;
         g.winner = if winner_raw == 0 {
             None
         } else {

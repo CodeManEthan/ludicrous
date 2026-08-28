@@ -47,21 +47,57 @@ def _shutdown_pool() -> None:
         pool.shutdown(wait=True)
 
 
-def _parallel(worker, args_list: list) -> list:
+def _run_chunk(worker, chunk: list) -> list:
+    """One pool task = one chunk of games (same batching pool.map used)."""
+    return [worker(args) for args in chunk]
+
+
+def _parallel(worker, args_list: list, progress=None) -> list:
+    """Run worker over args_list on the pool; results in input order.
+
+    progress, if given, is called as progress(done_items, total_items) from
+    executor callback threads as chunks finish. It must be thread-safe and
+    should never raise (a raise here would leak into the executor's callback
+    machinery, not the caller).
+    """
     if len(args_list) == 1:
-        return [worker(args_list[0])]
-    pool = _get_pool()
-    chunk = max(1, len(args_list) // ((pool._max_workers or 1) * 8))
+        results = [worker(args_list[0])]
+        if progress is not None:
+            progress(1, 1)
+        return results
+
+    def attempt() -> list:
+        pool = _get_pool()
+        chunk = max(1, len(args_list) // ((pool._max_workers or 1) * 8))
+        chunks = [args_list[i:i + chunk] for i in range(0, len(args_list), chunk)]
+        futures = [pool.submit(_run_chunk, worker, c) for c in chunks]
+        if progress is not None:
+            total = len(args_list)
+            counted = {"done": 0}
+            count_lock = threading.Lock()
+            sizes = {id(f): len(c) for f, c in zip(futures, chunks)}
+
+            def _on_done(fut):
+                with count_lock:
+                    counted["done"] += sizes[id(fut)]
+                    done = counted["done"]
+                progress(done, total)
+
+            for f in futures:
+                f.add_done_callback(_on_done)
+        results: list = []
+        for f in futures:
+            results.extend(f.result())
+        return results
+
     try:
-        return list(pool.map(worker, args_list, chunksize=chunk))
+        return attempt()
     except BrokenExecutor:
         # A worker died (an OOM kill, say). A fresh pool per call used to
         # absorb that; now the pool outlives the call, so retire the broken
         # one and retry once rather than poisoning every later batch.
         _shutdown_pool()
-        pool = _get_pool()
-        chunk = max(1, len(args_list) // ((pool._max_workers or 1) * 8))
-        return list(pool.map(worker, args_list, chunksize=chunk))
+        return attempt()
 
 
 def _run_one(args: tuple[int, int, int, int]) -> dict:
@@ -86,6 +122,7 @@ def run_batch(
     base_seed: int = 0,
     max_rounds: int = 1_000_000,
     workers: int | None = None,
+    progress=None,
 ) -> list[dict]:
     """Simulate num_games games; returns one summary row per game, in seed order."""
     # Validate the config once up front (workers would each raise otherwise).
@@ -94,7 +131,7 @@ def run_batch(
         (num_players, num_decks, seed, max_rounds)
         for seed in range(base_seed, base_seed + num_games)
     ]
-    return _parallel(_run_one, args)
+    return _parallel(_run_one, args, progress=progress)
 
 
 def summarize_batch(games: list[dict]) -> dict:
@@ -161,6 +198,7 @@ def run_blackjack_batch(
     num_games: int,
     strategies: list[str],
     base_seed: int = 0,
+    progress=None,
 ) -> list[dict]:
     """Simulate num_games blackjack sessions; one summary row per session."""
     BlackjackGame(num_seats, num_decks, num_rounds, strategies=strategies, seed=0)
@@ -168,7 +206,7 @@ def run_blackjack_batch(
         (num_seats, num_decks, num_rounds, tuple(strategies), seed)
         for seed in range(base_seed, base_seed + num_games)
     ]
-    return _parallel(_run_one_blackjack, args)
+    return _parallel(_run_one_blackjack, args, progress=progress)
 
 
 def summarize_blackjack_batch(sessions: list[dict]) -> dict:

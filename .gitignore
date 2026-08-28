@@ -40,3 +40,7 @@ ENV/
 *.tmp
 *.bak
 *~
+
+# Agent scratch (git worktrees, browser session logs)
+.claude/
+.playwright-cli/

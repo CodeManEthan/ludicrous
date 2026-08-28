@@ -43,6 +43,10 @@ pub(crate) fn summary_json(s: &Summary) -> String {
          \"biggest_pot\": {}",
         s.completed, s.rounds, s.wars, s.deepest_war, s.biggest_pot
     ));
+    out.push_str(&format!(
+        ", \"deepest_war_round\": {}, \"biggest_pot_round\": {}",
+        s.deepest_war_round, s.biggest_pot_round
+    ));
     match s.winner {
         Some(w) => out.push_str(&format!(", \"winner\": {}", w)),
         None => out.push_str(", \"winner\": null"),

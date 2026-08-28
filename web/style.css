@@ -89,13 +89,63 @@ input[type="number"] { width: 72px; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 
 main {
-  max-width: 1280px;
+  /* Wide by design: the grid auto-fills and the charts stretch, so give
+     them the screen. (Was 1280px — a readability default, not a need.) */
+  max-width: 1760px;
   margin: 0 auto;
   padding: 16px 20px 40px;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
+
+/* Explicit flex order so the cards/chart swap is a class flip. */
+#stats { order: 1; }
+#condensedNote { order: 2; }
+#unfinishedNote { order: 3; }
+#playback { order: 4; }
+#table { order: 6; }
+#chartSection { order: 7; }
+#elimSection { order: 8; }
+#batchStats { order: 9; }
+#batchNote { order: 10; }
+#evSection { order: 11; }
+#histSection { order: 12; }
+#seatSection { order: 13; }
+#outlierSection { order: 14; }
+main.chart-first #chartSection { order: 5; }
+
+/* --- table bar (cards panel header) --- */
+.table-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.table-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.table-controls .chk.sel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.table-controls select {
+  background: var(--surface-2);
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+#table.collapsed #grid,
+#table.collapsed #dealerArea { display: none; }
+#table.collapsed .table-bar { margin-bottom: 0; }
 
 .panel {
   background: var(--surface);
@@ -139,6 +189,9 @@ main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Long values step down instead of clipping ("+124 / -1…"). */
+.tile .value.fit-small { font-size: 17px; line-height: 29px; }
+.tile .value.fit-tiny { font-size: 13px; line-height: 29px; }
 
 .note { color: var(--ink-2); }
 .note.warn { border-color: rgba(201, 133, 0, 0.55); color: #e5c894; }
@@ -455,7 +508,41 @@ main {
 @keyframes lud-spin { to { transform: rotate(360deg); } }
 #loadingTitle { font-size: 15px; color: var(--ink); }
 #loadingElapsed { color: var(--muted); font-variant-numeric: tabular-nums; min-height: 20px; }
+.pbar {
+  width: 100%;
+  height: 6px;
+  background: var(--grid-line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+#loadingBar {
+  height: 100%;
+  width: 0%;
+  background: var(--s1);
+  border-radius: 3px;
+  transition: width 0.15s linear;
+}
+#loadingCount { color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
 #loadingNote { color: #e5c894; font-size: 12px; line-height: 1.5; }
+
+/* --- highlight reel --- */
+.highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.hl-chip {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 12px;
+  padding: 4px 11px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.hl-chip:hover { border-color: var(--s1); color: var(--ink); }
 
 /* --- suspense mode --- */
 .finale {

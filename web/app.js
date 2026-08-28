@@ -78,6 +78,46 @@ function fmtMs(ms) {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
+// ------------------------------------------------------ layout preferences
+//
+// Per-viewer conveniences: cards/chart order, collapsed cards, how long
+// eliminated players stay in the grid. localStorage may be unavailable
+// (private windows, blocked site data) — every touch is guarded.
+
+function loadLayoutPrefs() {
+  try { return JSON.parse(localStorage.getItem("ludicrous-layout")) || {}; }
+  catch { return {}; }
+}
+
+let layoutPrefs = loadLayoutPrefs();
+
+function saveLayoutPrefs() {
+  try { localStorage.setItem("ludicrous-layout", JSON.stringify(layoutPrefs)); }
+  catch { /* per-viewer convenience only */ }
+}
+
+function applyLayoutPrefs() {
+  $("#results").classList.toggle("chart-first", !!layoutPrefs.chartFirst);
+  $("#swapBtn").textContent = layoutPrefs.chartFirst ? "⇅ cards first" : "⇅ chart first";
+  $("#table").classList.toggle("collapsed", !!layoutPrefs.tableCollapsed);
+  $("#collapseBtn").textContent = layoutPrefs.tableCollapsed ? "+" : "−";
+  $("#collapseBtn").title = layoutPrefs.tableCollapsed ? "Expand the cards" : "Collapse the cards";
+  const elim = layoutPrefs.elimDisplay || "keep";
+  if ($("#elimDisplay").value !== elim) $("#elimDisplay").value = elim;
+}
+
+// How many rounds an eliminated player's tile stays in the grid.
+// null = forever (dimmed); 0 = gone at once; linger scales with game length
+// so the choice means the same thing at 100 rounds and at 300,000 — and
+// scrubbing backward always brings players back (it's all a function of
+// the current round).
+function elimHideAfter() {
+  const mode = layoutPrefs.elimDisplay || "keep";
+  if (mode === "hide") return 0;
+  if (mode === "linger") return Math.max(25, Math.round(state.rounds * 0.02));
+  return null;
+}
+
 // ------------------------------------------------- loading overlay (server)
 //
 // v2 games build in ~100 ms and never show this. v1 games, and especially
@@ -94,6 +134,9 @@ function showLoading(title, note) {
   $("#loadingNote").textContent = note || "";
   $("#loadingNote").hidden = !note;
   $("#loadingElapsed").textContent = " ";
+  $("#loadingBarWrap").hidden = true;
+  $("#loadingCount").hidden = true;
+  $("#loadingBar").style.width = "0%";
   const startedAt = performance.now();
   clearTimeout(loadingDelay);
   loadingDelay = setTimeout(() => {
@@ -111,6 +154,39 @@ function hideLoading() {
   loadingDelay = null;
   loadingClock = null;
   $("#loading").hidden = true;
+}
+
+function updateLoadingProgress(done, total, unit) {
+  $("#loadingBarWrap").hidden = false;
+  $("#loadingCount").hidden = false;
+  $("#loadingBar").style.width = `${(100 * done) / Math.max(total, 1)}%`;
+  $("#loadingCount").textContent = `${fmt.format(done)} / ${fmt.format(total)} ${unit}`;
+}
+
+// Read an /api/batch/stream response: NDJSON progress lines, then exactly
+// one {result} (or {error}) line. The connection closing ends the stream.
+async function readBatchStream(response, onProgress) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let payload = null;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line) continue;
+      const msg = JSON.parse(line);
+      if (msg.error) throw new Error(msg.error);
+      if (msg.progress) onProgress(msg.progress.done, msg.progress.total);
+      if (msg.result) payload = msg.result;
+    }
+    if (done) break;
+  }
+  if (!payload) throw new Error("the batch stream ended without a result");
+  return payload;
 }
 
 // ------------------------------------------------------- v2 engine (wasm)
@@ -225,6 +301,8 @@ function buildV2State(result, names) {
     wars: summary.wars,
     deepest_war: summary.deepest_war,
     biggest_pot: summary.biggest_pot,
+    deepest_war_round: summary.deepest_war_round || 0,
+    biggest_pot_round: summary.biggest_pot_round || 0,
     total_cards: summary.num_decks * 52,
   };
   return {
@@ -268,7 +346,14 @@ async function simulateV2() {
     engine: "v2", players, decks, max_rounds: maxRounds,
     names: nameMode, seed, run: "1",
   }).toString();
-  history.replaceState(null, "", url);
+  // Each run is a history entry, so Back walks through your games instead
+  // of dumping you out of the app. A run replayed BY Back (popstate) only
+  // corrects the URL in place — pushing there would trap the button.
+  if (url.search !== location.search) {
+    if (historyNav) history.replaceState(null, "", url);
+    else history.pushState(null, "", url);
+  }
+  historyNav = false;
 }
 
 // One round, reconstructed in the worker. Only one request is ever in
@@ -468,6 +553,7 @@ function buildIndex(events, rounds) {
   const winners = new Int32Array(rounds + 1);
   let names = null;
   let wars = 0, deepestWar = 0, biggestPot = 0;
+  let deepestWarRound = 0, biggestPotRound = 0;
 
   for (const e of events) {
     switch (e.type) {
@@ -484,7 +570,10 @@ function buildIndex(events, rounds) {
         const round = roundAt(e.round);
         round.war = { depth: e.depth, tiebreaker: e.tiebreaker, players: e.players };
         wars += 1;
-        deepestWar = Math.max(deepestWar, e.depth);
+        if (e.depth > deepestWar) {
+          deepestWar = e.depth;
+          deepestWarRound = e.round;
+        }
         break;
       }
       case "PlayerEliminated":
@@ -495,7 +584,10 @@ function buildIndex(events, rounds) {
       case "RoundWon": {
         roundAt(e.round).win = { winner: e.winner, cards: e.cards_won, via: e.via };
         winners[e.round] = e.winner;
-        biggestPot = Math.max(biggestPot, e.cards_won);
+        if (e.cards_won > biggestPot) {
+          biggestPot = e.cards_won;
+          biggestPotRound = e.round;
+        }
         break;
       }
       case "RoundDrawn":
@@ -514,7 +606,10 @@ function buildIndex(events, rounds) {
   return {
     perRound, countsSeries, elimRound, winners, elimSorted,
     namesFromEvents: names,
-    computedStats: { wars, deepest_war: deepestWar, biggest_pot: biggestPot },
+    computedStats: {
+      wars, deepest_war: deepestWar, biggest_pot: biggestPot,
+      deepest_war_round: deepestWarRound, biggest_pot_round: biggestPotRound,
+    },
   };
 }
 
@@ -705,6 +800,15 @@ function activate() {
   drawChart();
   updateSpeedLabels();
 
+  state.highlights = full && state.game === "war" ? buildHighlights() : null;
+  const hasReel = !!state.highlights && state.highlights.length >= 3;
+  $("#reelBtn").hidden = !hasReel;
+  if (hasReel) {
+    const secs = state.highlights.length * ((REEL_LEAD + REEL_TAIL) / REEL_SPEED + 0.15);
+    $("#reelBtn").textContent = `▶ Highlights (${fmtDuration(secs)})`;
+  }
+  renderHighlights();
+
   if (full) {
     $("#scrubber").max = state.rounds;
     $("#scrubber").value = 0;
@@ -732,6 +836,7 @@ function revealResults() {
   renderStats();
   showResults();   // re-evaluates the unfinished-game note
   drawChart();     // snap the zoomed axis back to the full game, mask off
+  renderHighlights();  // the labeled chips waited for the reveal
   showFinale();
 }
 
@@ -761,6 +866,126 @@ function fmtDuration(seconds) {
   return `~${(seconds / 3600).toFixed(1)}h`;
 }
 
+// -------------------------------------------------------- highlight reel
+//
+// An OPTIONAL way to watch, never the default: the game's key moments —
+// first blood, the endgame eliminations, the deepest war, the biggest pot,
+// lead changes — played a few rounds each in order. In suspense mode the
+// reel works (it only ever moves the playhead forward, so the chart reveal
+// stays honest) but the labeled chips wait for the reveal.
+
+const REEL_SPEED = 6;  // rnd/s while the reel plays
+const REEL_LEAD = 4;   // rounds shown before each moment
+const REEL_TAIL = 3;   // rounds shown after it
+let reel = null;       // {idx, until} while the reel is playing
+let reelJumping = false;
+
+function buildHighlights() {
+  if (state.game !== "war" || state.mode !== "full") return null;
+  const raw = [];
+  const push = (round, label) => {
+    if (round >= 1 && round <= state.rounds) raw.push({ round, label });
+  };
+
+  const elims = state.elimSorted || [];
+  if (elims.length) {
+    const first = elims[0];
+    push(first.round, `☠ first blood — ${state.names[first.player]} out`);
+    for (const e of elims.slice(-3)) {
+      if (e.round === first.round) continue;
+      push(e.round, `☠ ${state.names[e.player]} out (#${state.standings.indexOf(e.player) + 1})`);
+    }
+  }
+  const stats = state.stats;
+  if (stats.deepest_war_round && stats.deepest_war > 1) {
+    push(stats.deepest_war_round, `⚔ deepest war ×${stats.deepest_war}`);
+  }
+  if (stats.biggest_pot_round) {
+    push(stats.biggest_pot_round, `💰 biggest pot — ${fmt.format(stats.biggest_pot)} cards`);
+  }
+
+  // Lead changes, at chart-sample resolution (exactness doesn't matter for
+  // "take me to where the game turned"). The opening rounds are churn, not
+  // narrative — skip changes before round 10.
+  const { rounds: xs, series } = state.chartData;
+  const pids = Object.keys(series);
+  let leader = null;
+  const changes = [];
+  for (let i = 0; i < xs.length; i++) {
+    let best = -1;
+    let bestPid = null;
+    for (const pid of pids) {
+      const v = series[pid][i];
+      if (v != null && v > best) { best = v; bestPid = Number(pid); }
+    }
+    if (bestPid === null) continue;
+    if (leader !== null && bestPid !== leader && xs[i] >= 10) {
+      changes.push({ round: xs[i], pid: bestPid });
+    }
+    leader = bestPid;
+  }
+  const step = Math.max(1, Math.ceil(changes.length / 5));
+  for (let i = 0; i < changes.length; i += step) {
+    push(changes[i].round, `📈 ${state.names[changes[i].pid]} takes the lead`);
+  }
+
+  push(state.rounds, "🏁 the finish");
+
+  // Sort, and merge moments that share a round.
+  raw.sort((a, b) => a.round - b.round);
+  const merged = [];
+  for (const m of raw) {
+    const last = merged[merged.length - 1];
+    if (last && last.round === m.round) last.label += ` · ${m.label}`;
+    else merged.push({ ...m });
+  }
+  return merged;
+}
+
+function renderHighlights() {
+  const strip = $("#highlights");
+  const moments = state.highlights;
+  const show = !!(moments && moments.length) && !state.suspense;
+  strip.hidden = !show;
+  if (!show) return;
+  strip.innerHTML = moments
+    .map((m, i) =>
+      `<button class="hl-chip" data-hl="${i}" type="button">` +
+      `${m.label} <span class="hint">· r${fmt.format(m.round)}</span></button>`)
+    .join("");
+}
+
+function reelSeek(round) {
+  reelJumping = true;
+  seek(round);
+  reelJumping = false;
+}
+
+// Move the reel to its next moment; false when the reel is finished.
+function advanceReel() {
+  reel.idx += 1;
+  const moments = state.highlights;
+  if (reel.idx >= moments.length) {
+    reel = null;
+    return false;
+  }
+  const moment = moments[reel.idx];
+  reel.until = Math.min(state.rounds, moment.round + REEL_TAIL);
+  reelSeek(Math.max(0, moment.round - REEL_LEAD));
+  return true;
+}
+
+function playReel() {
+  if (!state || !state.highlights || !state.highlights.length) return;
+  pause();  // also clears any running reel
+  reel = { idx: -1, until: 0 };
+  advanceReel();
+  playing = true;
+  lastTs = 0;
+  $("#playBtn").textContent = "⏸";
+  requestAnimationFrame(tick);
+}
+
 // "10 rnd/s" means nothing for a 41,919-round game until you do the division
 // — so do it for the user: every speed option shows how long THIS game takes.
 function updateSpeedLabels() {
@@ -784,8 +1009,8 @@ function renderStats() {
   if (state.game === "blackjack") {
     const winner = summary.winner ? summary.seats[summary.winner] : null;
     tiles = [
-      [hide || !winner ? "Winner" : `Winner (${signed(winner.bankroll)}u)`,
-       hide ? MASK : winner ? winner.name : "—"],
+      ["Winner",
+       hide ? MASK : winner ? `${winner.name} · ${signed(winner.bankroll)}u` : "—"],
       ["Rounds", fmt.format(summary.rounds)],
       ["Hands", fmt.format(stats.hands)],
       ["Table net", hide ? MASK : `${stats.net >= 0 ? "+" : ""}${fmt.format(stats.net)}u`],
@@ -809,11 +1034,19 @@ function renderStats() {
   }
   if (state.prepareMs !== undefined) tiles.push(["Simulated in", fmtMs(state.prepareMs)]);
   $("#stats").innerHTML = tiles.map(tileHtmlMasked).join("");
+  fitTiles($("#stats"));
 }
 
 function buildGrid() {
   const grid = $("#grid");
   const dealerArea = $("#dealerArea");
+  const count = Object.keys(state.names).length;
+  $("#tableTitle").textContent = state.game === "blackjack"
+    ? `The table — ${count} seat${count === 1 ? "" : "s"} vs the dealer`
+    : `The table — ${count} players`;
+  $("#tableHint").textContent = state.game === "blackjack"
+    ? "" : "— under each card: cards held · rounds won";
+  $("#elimDisplayLabel").hidden = state.game === "blackjack";
   grid.innerHTML = "";
   grid.classList.toggle("bj", state.game === "blackjack");
   if (state.game === "blackjack") {
@@ -844,7 +1077,7 @@ function buildGrid() {
     tile.innerHTML =
       `<div class="pname" title="${state.names[pid]}">${state.names[pid]}</div>` +
       `<img src="${CARD_BACK}" alt="">` +
-      `<div class="pmeta"></div>`;
+      `<div class="pmeta" title="cards held · rounds won"></div>`;
     grid.appendChild(tile);
   }
 }
@@ -911,11 +1144,13 @@ function renderWarRound(round) {
 
 function paintWarRound(round, roundData, wins) {
   const warPlayers = roundData?.war ? new Set(roundData.war.players) : null;
+  const linger = elimHideAfter();
 
   for (const tile of $("#grid").children) {
     const pid = Number(tile.dataset.pid);
     const outAt = state.elimRound[pid];
     const out = outAt !== undefined && outAt <= round;
+    tile.hidden = out && linger !== null && round >= outAt + linger;
     tile.classList.toggle("out", out);
     tile.classList.toggle("winner", roundData?.win?.winner === pid);
     tile.classList.toggle("war", !out && !!warPlayers?.has(pid));
@@ -993,7 +1228,7 @@ function describeBlackjackRound(roundData, round) {
   const pushes = outcomes.length - wins - losses;
   const net = Math.round(outcomes.reduce((sum, r) => sum + r.payout, 0) * 10) / 10;
   const parts = [
-    `${wins}W ${losses}L ${pushes}P`,
+    `${wins} won · ${losses} lost · ${pushes} push${pushes === 1 ? "" : "es"}`,
     `table ${net >= 0 ? "+" : ""}${net}u this round`,
   ];
   if (outcomes.some((r) => r.outcome === "blackjack")) parts.push(`<span class="win-name">Blackjack!</span>`);
@@ -1015,6 +1250,7 @@ function renderElimFeed() {
 // --------------------------------------------------------------- playback
 
 function seek(round) {
+  if (!reelJumping) reel = null;  // manual navigation ends the reel
   round = Math.max(0, Math.min(state.rounds, Math.round(round)));
   pos = round;
   if (round !== current) render(round);
@@ -1022,6 +1258,7 @@ function seek(round) {
 
 function pause() {
   playing = false;
+  reel = null;
   const btn = $("#playBtn");
   if (btn) btn.textContent = "▶";
   const note = $("#pauseNote");
@@ -1043,10 +1280,23 @@ function tick(ts) {
   if (!lastTs) lastTs = ts;
   const dt = (ts - lastTs) / 1000;
   lastTs = ts;
-  const speed = Number($("#speedSel").value);
+  const speed = reel ? REEL_SPEED : Number($("#speedSel").value);
   let next = Math.min(pos + speed * dt, state.rounds);
 
-  if (state.game === "war" && $("#pauseElim").checked) {
+  if (reel && next >= reel.until) {
+    // Land on the moment's last round (so it actually renders — the finale
+    // hook included), then cut to the next moment or stop.
+    pos = reel.until;
+    if (Math.floor(pos) !== current) render(Math.floor(pos));
+    if (pos >= state.rounds || !advanceReel()) {
+      pause();
+      return;
+    }
+    requestAnimationFrame(tick);
+    return;
+  }
+
+  if (!reel && state.game === "war" && $("#pauseElim").checked) {
     const from = Math.floor(pos);
     const hit = state.elimSorted.find((e) => e.round > from && e.round <= Math.floor(next));
     if (hit && hit.round < state.rounds) {  // final elimination = game over, no need to pause
@@ -1295,14 +1545,24 @@ async function runBatch() {
     showLoading(
       `Running ${fmt.format(payload.games)} ${gameType} ${payload.games === 1 ? "game" : "games"}…`,
       big ? "Large batch — the server simulates every game, so this can take minutes." : "");
-    const response = await fetch("/api/batch", {
+    // The stream route sends live progress; the buffered route stays as a
+    // fallback for anything without ReadableStream response bodies.
+    const streaming = typeof ReadableStream === "function";
+    const response = await fetch(streaming ? "/api/batch/stream" : "/api/batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       signal: loadingAbort.signal,
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    let data;
+    if (streaming && response.ok && response.body) {
+      const unit = gameType === "blackjack" ? "sessions" : "games";
+      data = await readBatchStream(response,
+        (done, total) => updateLoadingProgress(done, total, unit));
+    } else {
+      data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    }
     batchData = data;
     renderBatch();
   } catch (error) {
@@ -1318,6 +1578,18 @@ async function runBatch() {
 
 function tileHtml([label, value]) {
   return `<div class="tile"><div class="label">${label}</div><div class="value" title="${value}">${value}</div></div>`;
+}
+
+// A value that would clip steps down a font size (twice if needed) — the
+// tester's "+124 / -1…" tiles were cut off at full size with room below.
+function fitTiles(container) {
+  for (const value of container.querySelectorAll(".tile .value")) {
+    value.classList.remove("fit-small", "fit-tiny");
+    if (value.scrollWidth > value.clientWidth) value.classList.add("fit-small");
+    if (value.scrollWidth > value.clientWidth) {
+      value.classList.replace("fit-small", "fit-tiny");
+    }
+  }
 }
 
 function signed(n) {
@@ -1365,6 +1637,7 @@ function renderBatch() {
     ["Base seed", String(config.base_seed)],
   ];
   $("#batchStats").innerHTML = tiles.map(tileHtml).join("");
+  fitTiles($("#batchStats"));
   const finished = batchData.games.filter((g) => g.completed);
   histValues = (finished.length ? finished : batchData.games).map((g) => g.rounds);
   drawHistogram();
@@ -1385,12 +1658,13 @@ function renderBlackjackBatch() {
     ["Hands", fmt.format(agg.hands)],
     ["Overall EV", `${(agg.ev * 100).toFixed(2)}%`],
     ["Net units", `${signed(agg.net)}u`],
-    [`Session net (σ ${fmt.format(Math.round(s.stdev))})`, `${signed(s.mean)}u`],
-    ["Best / worst", `${signed(s.max)} / ${signed(s.min)}`],
+    ["Session net (mean ± spread)", `${signed(s.mean)} ±${fmt.format(Math.round(s.stdev))}u`],
+    ["Best / worst session", `${signed(s.max)} / ${signed(s.min)}u`],
     [`Hands / sec (${elapsed.toFixed(1)}s total)`, `${compact(Math.round(agg.hands / elapsed))}/s`],
     ["Base seed", String(config.base_seed)],
   ];
   $("#batchStats").innerHTML = tiles.map(tileHtml).join("");
+  fitTiles($("#batchStats"));
   drawEVChart();
   histValues = batchData.games.map((g) => g.net);
   drawHistogram();
@@ -1637,9 +1911,33 @@ $("#skipBtn").addEventListener("click", () => {
   revealResults();
   seek(state.rounds);
 });
+$("#reelBtn").addEventListener("click", playReel);
+$("#highlights").addEventListener("click", (event) => {
+  const chip = event.target.closest("button[data-hl]");
+  if (!chip) return;
+  pause();
+  seek(state.highlights[Number(chip.dataset.hl)].round);
+});
 $("#loadingCancel").addEventListener("click", () => {
   if (loadingAbort) loadingAbort.abort();
 });
+
+$("#swapBtn").addEventListener("click", () => {
+  layoutPrefs.chartFirst = !layoutPrefs.chartFirst;
+  saveLayoutPrefs();
+  applyLayoutPrefs();
+});
+$("#collapseBtn").addEventListener("click", () => {
+  layoutPrefs.tableCollapsed = !layoutPrefs.tableCollapsed;
+  saveLayoutPrefs();
+  applyLayoutPrefs();
+});
+$("#elimDisplay").addEventListener("change", (event) => {
+  layoutPrefs.elimDisplay = event.target.value;
+  saveLayoutPrefs();
+  if (state && state.mode === "full" && state.game === "war" && current >= 0) render(current);
+});
+applyLayoutPrefs();
 $("#toStart").addEventListener("click", () => { pause(); seek(0); });
 $("#toEnd").addEventListener("click", () => { pause(); seek(state.rounds); });
 $("#stepBack").addEventListener("click", () => { pause(); seek(current - 1); });
@@ -1748,11 +2046,12 @@ window.addEventListener("resize", () => {
 // `engine` is the only new key. Absent means v1, so every share URL written
 // before v2 existed still replays through the Python server exactly as it
 // did; `engine=v2` re-simulates in the browser instead.
-(function initFromUrl() {
-  const params = new URLSearchParams(location.search);
+let historyNav = false;  // the next run came from Back/Forward, not a click
+
+function applyUrlParams(params) {
   if (params.has("engine")) urlEngine = params.get("engine") === "v2" ? "v2" : "v1";
-  if (params.get("game") === "blackjack") setGameType("blackjack");
-  if (params.get("mode") === "batch") setMode("batch");
+  setGameType(params.get("game") === "blackjack" ? "blackjack" : "war");
+  setMode(params.get("mode") === "batch" ? "batch" : "single");
   if (params.has("players")) $("#players").value = params.get("players");
   if (params.has("decks")) $("#decks").value = params.get("decks");
   if (params.has("rounds")) $("#rounds").value = params.get("rounds");
@@ -1770,5 +2069,26 @@ window.addEventListener("resize", () => {
   if (params.get("run") === "1") {
     if (!params.has("engine")) urlEngine = "v1";
     $("#setup").requestSubmit();
+    return true;
   }
+  return false;
+}
+
+(function initFromUrl() {
+  applyUrlParams(new URLSearchParams(location.search));
 })();
+
+// Back/Forward re-runs the game at that URL (v2 re-simulates in ~100 ms).
+window.addEventListener("popstate", () => {
+  historyNav = true;
+  const params = new URLSearchParams(location.search);
+  if (!applyUrlParams(params)) {
+    // Back to the blank form: clear the table rather than stranding stale
+    // results under an empty URL.
+    pause();
+    state = null;
+    batchData = null;
+    showResults();
+    historyNav = false;
+  }
+});

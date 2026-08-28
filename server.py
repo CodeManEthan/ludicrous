@@ -18,6 +18,7 @@ import gzip
 import json
 import os
 import random
+import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -215,7 +216,7 @@ def run_simulation(config: dict) -> dict:
     return response
 
 
-def run_batch_api(config: dict) -> dict:
+def run_batch_api(config: dict, progress=None) -> dict:
     if config.get("game") == "blackjack":
         seats = int(config.get("players", 4))
         decks = int(config.get("decks", 6))
@@ -234,7 +235,7 @@ def run_batch_api(config: dict) -> dict:
             raise ValueError(f"games must be between 1 and {MAX_BATCH_GAMES}")
         start_time = time.perf_counter()
         rows = run_blackjack_batch(seats, decks, rounds, games, strategies,
-                                   base_seed=base_seed)
+                                   base_seed=base_seed, progress=progress)
         elapsed = time.perf_counter() - start_time
         return {
             "game": "blackjack",
@@ -267,7 +268,8 @@ def run_batch_api(config: dict) -> dict:
         raise ValueError(f"max_rounds must be between 1 and {MAX_ROUNDS_CEILING:,}")
 
     start_time = time.perf_counter()
-    rows = run_batch(players, decks, games, base_seed=base_seed, max_rounds=max_rounds)
+    rows = run_batch(players, decks, games, base_seed=base_seed,
+                     max_rounds=max_rounds, progress=progress)
     elapsed = time.perf_counter() - start_time
     return {
         "game": "war",
@@ -305,7 +307,65 @@ class Handler(SimpleHTTPRequestHandler):
             return str(CARDS_DIR / Path(clean).name)
         return super().translate_path(path)
 
+    def stream_batch(self):
+        """POST /api/batch/stream — the batch with live progress.
+
+        The response is newline-delimited JSON over an HTTP/1.0-style
+        stream (no Content-Length; the closed connection ends the body):
+        throttled {"progress": {"done", "total"}} lines while the pool
+        works, then exactly one {"result": ...} line — or {"error": ...},
+        since validation happens after the 200 header is already out.
+        Not gzipped: progress lines are tiny and the result is one line.
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            config = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, TypeError):
+            self.send_error(400)
+            return
+
+        write_lock = threading.Lock()
+        throttle = {"at": 0.0}
+
+        def send_line(payload: dict) -> None:
+            data = json.dumps(payload).encode() + b"\n"
+            with write_lock:
+                self.wfile.write(data)
+                self.wfile.flush()
+
+        def progress(done: int, total: int) -> None:
+            # Called from executor callback threads. Throttled so a fast
+            # batch doesn't spend its time writing to the socket, and
+            # never raises — a gone client must not poison the pool
+            # (the computation is shared and finishes regardless).
+            now = time.perf_counter()
+            if done < total and now - throttle["at"] < 0.1:
+                return
+            throttle["at"] = now
+            try:
+                send_line({"progress": {"done": done, "total": total}})
+            except OSError:
+                pass
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            result = run_batch_api(config, progress=progress)
+            send_line({"result": result})
+        except (ValueError, TypeError, KeyError) as error:
+            try:
+                send_line({"error": str(error)})
+            except OSError:
+                pass
+        except OSError:
+            pass  # client disconnected mid-stream
+
     def do_POST(self):
+        if self.path == "/api/batch/stream":
+            self.stream_batch()
+            return
         routes = {"/api/simulate": run_simulation, "/api/batch": run_batch_api}
         handler = routes.get(self.path)
         if handler is None:
