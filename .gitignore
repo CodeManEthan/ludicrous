@@ -41,6 +41,8 @@ ENV/
 *.bak
 *~
 
-# Agent scratch (git worktrees, browser session logs)
-.claude/
+# Agent scratch (git worktrees, browser session logs) — but skills are part
+# of the repo: they're how any agent knows project workflows like deploying.
+.claude/*
+!.claude/skills/
 .playwright-cli/
