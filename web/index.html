@@ -22,10 +22,10 @@
         </select>
       </label>
       <label id="playersLabel">Players
-        <input id="players" type="number" min="2" max="100" value="6" title="2–100">
+        <input id="players" type="number" min="2" max="200" value="6" title="2–200">
       </label>
       <label>Decks
-        <input id="decks" type="number" min="1" max="100" value="3" title="1–100">
+        <input id="decks" type="number" min="1" max="200" value="3" title="1–200">
       </label>
       <label id="roundsLabel" hidden>Rounds
         <input id="rounds" type="number" min="1" max="10000" value="100">
@@ -33,24 +33,29 @@
       <label id="gamesLabel" hidden>Games
         <input id="games" type="number" min="1" max="10000" value="1000">
       </label>
-      <label id="maxRoundsLabel" title="Safety cap: war games stopped here count as unfinished">Max rounds
-        <input id="maxRounds" type="number" min="100" max="20000000" step="1" value="1000000">
-      </label>
       <div id="stratWrap" class="strat-wrap" hidden>
         <span class="strat-title">Strategies (round-robin)</span>
         <div id="stratChips" class="strat-chips"></div>
       </div>
-      <label id="namesLabel">Names
-        <select id="nameMode">
-          <option value="random" selected>Random</option>
-          <option value="default">Player 1, 2, …</option>
-        </select>
-      </label>
-      <label>Seed
-        <input id="seed" type="text" inputmode="numeric" placeholder="random" size="9">
-      </label>
+      <details id="advancedBox" class="opt-box">
+        <summary class="btn">Options ▾</summary>
+        <div class="opt-panel">
+          <label id="maxRoundsLabel" title="Safety cap: war games stopped here count as unfinished">Max rounds
+            <input id="maxRounds" type="number" min="100" max="20000000" step="1" value="1000000">
+          </label>
+          <label id="namesLabel">Names
+            <select id="nameMode">
+              <option value="random" selected>Random</option>
+              <option value="default">Player 1, 2, …</option>
+            </select>
+          </label>
+          <label>Seed
+            <input id="seed" type="text" inputmode="numeric" placeholder="random" size="9">
+          </label>
+          <button id="importBtn" class="btn" type="button" title="Load a recording saved with simulate.py --json">Import…</button>
+        </div>
+      </details>
       <button id="simulateBtn" class="btn primary" type="submit">Simulate</button>
-      <button id="importBtn" class="btn" type="button" title="Load a recording saved with simulate.py --json">Import…</button>
       <input id="importFile" type="file" accept=".json,application/json" hidden>
     </form>
   </header>
@@ -71,22 +76,35 @@
           <select id="speedSel">
             <option value="1">1 rnd/s</option>
             <option value="3">3 rnd/s</option>
-            <option value="10" selected>10 rnd/s</option>
-            <option value="30">30 rnd/s</option>
-            <option value="100">100 rnd/s</option>
-            <option value="300">300 rnd/s</option>
-            <option value="1000">1,000 rnd/s</option>
-            <option value="5000">5,000 rnd/s</option>
+            <option value="10">10 rnd/s</option>
+            <option value="d240">game in ~4 min</option>
+            <option value="d120" selected>game in ~2 min</option>
+            <option value="d60">game in ~1 min</option>
+            <option value="d30">game in ~30 s</option>
           </select>
         </label>
         <input id="scrubber" type="range" min="0" max="1" value="0" step="1">
         <span id="roundLabel" class="round-label">Round 0</span>
-        <label class="chk"><input id="pauseElim" type="checkbox" checked> pause on eliminations</label>
         <span id="pauseNote" hidden>paused on an elimination — space resumes</span>
         <button id="reelBtn" class="btn" type="button" hidden
                 title="Play the game's key moments — eliminations, the deepest war, the biggest pot, lead changes">▶ Highlights</button>
         <button id="skipBtn" class="btn" type="button" hidden
                 title="Jump to the end and reveal the winner, the chart, and the stats">Skip to results</button>
+        <details id="viewBox" class="opt-box">
+          <summary class="btn">⚙ Options</summary>
+          <div class="opt-panel">
+            <label class="chk"><input id="pauseElim" type="checkbox"> pause on eliminations</label>
+            <label class="chk"><input id="chartTopChk" type="checkbox"> chart above the cards</label>
+            <label class="chk sel" id="elimDisplayLabel">eliminated players
+              <select id="elimDisplay">
+                <option value="strip" selected>collapse into a strip</option>
+                <option value="keep">stay, dimmed</option>
+                <option value="linger">hide after a while</option>
+                <option value="hide">hide right away</option>
+              </select>
+            </label>
+          </div>
+        </details>
       </div>
       <div id="banner" class="banner">&nbsp;</div>
       <div id="highlights" class="highlights" hidden></div>
@@ -100,19 +118,12 @@
         <span id="tableTitle">The table</span>
         <span class="hint" id="tableHint"></span>
         <span class="table-controls">
-          <label class="chk sel" id="elimDisplayLabel">eliminated players
-            <select id="elimDisplay">
-              <option value="keep" selected>stay, dimmed</option>
-              <option value="linger">hide after a while</option>
-              <option value="hide">hide right away</option>
-            </select>
-          </label>
-          <button id="swapBtn" class="btn icon" type="button" title="Swap the cards and the chart">⇅ chart first</button>
           <button id="collapseBtn" class="btn icon" type="button" title="Collapse the cards">−</button>
         </span>
       </div>
       <div id="dealerArea" class="dealer-area" hidden></div>
       <div id="grid" class="grid"></div>
+      <div id="outStrip" class="out-strip" hidden></div>
     </section>
 
     <section id="chartSection" class="panel">

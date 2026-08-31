@@ -128,22 +128,8 @@ main.chart-first #chartSection { order: 5; }
   align-items: center;
   gap: 8px;
 }
-.table-controls .chk.sel {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.table-controls select {
-  background: var(--surface-2);
-  color: var(--ink-2);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 3px 6px;
-  font-size: 12px;
-}
 #table.collapsed #grid,
+#table.collapsed #outStrip,
 #table.collapsed #dealerArea { display: none; }
 #table.collapsed .table-bar { margin-bottom: 0; }
 
@@ -221,6 +207,75 @@ main.chart-first #chartSection { order: 5; }
 }
 .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .chk input { accent-color: var(--s1); }
+
+/* --- options popovers (advanced setup + view options) --- */
+details.opt-box { position: relative; }
+details.opt-box > summary {
+  list-style: none;
+  user-select: none;
+  white-space: nowrap;
+}
+details.opt-box > summary::-webkit-details-marker { display: none; }
+details.opt-box[open] > summary { background: #2c2c2a; }
+.opt-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 210px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.opt-panel .chk.sel {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+.opt-panel .btn { text-align: center; }
+
+/* --- out-strip: eliminated players collapsed under the grid --- */
+.out-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  max-height: 150px;
+  overflow-y: auto;
+}
+.out-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-right: 6px;
+}
+.out-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.out-chip b { color: var(--ink-2); font-weight: 600; }
 
 .banner {
   margin-top: 10px;

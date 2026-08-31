@@ -98,22 +98,27 @@ function saveLayoutPrefs() {
 
 function applyLayoutPrefs() {
   $("#results").classList.toggle("chart-first", !!layoutPrefs.chartFirst);
-  $("#swapBtn").textContent = layoutPrefs.chartFirst ? "⇅ cards first" : "⇅ chart first";
+  $("#chartTopChk").checked = !!layoutPrefs.chartFirst;
   $("#table").classList.toggle("collapsed", !!layoutPrefs.tableCollapsed);
   $("#collapseBtn").textContent = layoutPrefs.tableCollapsed ? "+" : "−";
   $("#collapseBtn").title = layoutPrefs.tableCollapsed ? "Expand the cards" : "Collapse the cards";
-  const elim = layoutPrefs.elimDisplay || "keep";
+  const elim = layoutPrefs.elimDisplay || "strip";
   if ($("#elimDisplay").value !== elim) $("#elimDisplay").value = elim;
 }
 
+function elimMode() {
+  return layoutPrefs.elimDisplay || "strip";
+}
+
 // How many rounds an eliminated player's tile stays in the grid.
-// null = forever (dimmed); 0 = gone at once; linger scales with game length
-// so the choice means the same thing at 100 rounds and at 300,000 — and
-// scrubbing backward always brings players back (it's all a function of
-// the current round).
+// null = forever (dimmed); 0 = gone at once ("hide" and "strip" — strip
+// re-homes them below the grid); linger scales with game length so the
+// choice means the same thing at 100 rounds and at 300,000 — and scrubbing
+// backward always brings players back (it's all a function of the current
+// round).
 function elimHideAfter() {
-  const mode = layoutPrefs.elimDisplay || "keep";
-  if (mode === "hide") return 0;
+  const mode = elimMode();
+  if (mode === "hide" || mode === "strip") return 0;
   if (mode === "linger") return Math.max(25, Math.round(state.rounds * 0.02));
   return null;
 }
@@ -986,15 +991,36 @@ function playReel() {
   requestAnimationFrame(tick);
 }
 
+// Playback speed in rounds/sec for a speed-select value. Absolute values
+// ("10") pass through; duration values ("d60" = the whole game in ~60 s)
+// scale to the round count, so "game in ~1 min" means the same thing at
+// 1,500 rounds and at 300,000. The floor keeps tiny games from crawling —
+// they just finish early.
+const MIN_SCALED_SPEED = 3;
+
+function speedFor(value) {
+  if (value.startsWith("d")) {
+    return Math.max(MIN_SCALED_SPEED, state.rounds / Number(value.slice(1)));
+  }
+  return Number(value);
+}
+
+function playSpeed() {
+  return speedFor($("#speedSel").value);
+}
+
 // "10 rnd/s" means nothing for a 41,919-round game until you do the division
-// — so do it for the user: every speed option shows how long THIS game takes.
+// — so do it for the user: absolute speeds show how long THIS game takes,
+// scaled speeds show the rate they work out to.
 function updateSpeedLabels() {
   const full = state && state.mode === "full";
   for (const option of $("#speedSel").options) {
     const base = (option.dataset.base ??= option.textContent);
-    option.textContent = full
-      ? `${base} · ${fmtDuration(state.rounds / Number(option.value))}`
-      : base;
+    if (!full) { option.textContent = base; continue; }
+    const speed = speedFor(option.value);
+    option.textContent = option.value.startsWith("d")
+      ? `${base} · ${compact(Math.round(speed))} rnd/s`
+      : `${base} · ${fmtDuration(state.rounds / speed)}`;
   }
 }
 
@@ -1041,6 +1067,9 @@ function buildGrid() {
   const grid = $("#grid");
   const dealerArea = $("#dealerArea");
   const count = Object.keys(state.names).length;
+  $("#outStrip").hidden = true;
+  $("#outStrip")._count = -1;
+  $("#tableTitle")._in = undefined;
   $("#tableTitle").textContent = state.game === "blackjack"
     ? `The table — ${count} seat${count === 1 ? "" : "s"} vs the dealer`
     : `The table — ${count} players`;
@@ -1167,7 +1196,43 @@ function paintWarRound(round, roundData, wins) {
       meta.textContent = `${fmt.format(count)} · ${wins[pid] || 0}W`;
     }
   }
+  renderOutStrip(round);
   $("#banner").innerHTML = describeRound(roundData, round);
+}
+
+// The out-strip: in "collapse into a strip" mode, eliminated players leave
+// the grid and stack up here as compact placement chips — the active table
+// stays a clean block that shrinks as the field thins, instead of a sea of
+// grayed-out tiles at 200 players. Newest elimination first. Rebuilt only
+// when the set changes; eliminations are monotonic in round, so the count
+// identifies the set (scrubbing back shrinks it again).
+function renderOutStrip(round) {
+  const strip = $("#outStrip");
+  const out = state.elimSorted.filter((e) => e.round <= round);
+  const total = Object.keys(state.names).length;
+  const title = $("#tableTitle");
+  const inCount = total - out.length;
+  if (title._in !== inCount) {
+    title._in = inCount;
+    title.textContent = out.length > 0
+      ? `The table — ${fmt.format(inCount)} of ${fmt.format(total)} still in`
+      : `The table — ${total} players`;
+  }
+  const show = elimMode() === "strip" && out.length > 0;
+  if (!show) {
+    strip.hidden = true;
+    strip._count = -1;
+    return;
+  }
+  strip.hidden = false;
+  if (strip._count === out.length) return;
+  strip._count = out.length;
+  strip.innerHTML =
+    `<span class="out-label">Out · ${fmt.format(out.length)}</span>` +
+    out.slice().reverse().map(({ player, round: r }) =>
+      `<span class="out-chip" title="eliminated round ${fmt.format(r)}">` +
+      `<b>#${state.standings.indexOf(player) + 1}</b> ${state.names[player]}</span>`)
+      .join("");
 }
 
 const OUTCOME_LABELS = { win: "Win", blackjack: "Blackjack!", lose: "Lose", bust: "Bust", push: "Push" };
@@ -1280,7 +1345,7 @@ function tick(ts) {
   if (!lastTs) lastTs = ts;
   const dt = (ts - lastTs) / 1000;
   lastTs = ts;
-  const speed = reel ? REEL_SPEED : Number($("#speedSel").value);
+  const speed = reel ? REEL_SPEED : playSpeed();
   let next = Math.min(pos + speed * dt, state.rounds);
 
   if (reel && next >= reel.until) {
@@ -1922,10 +1987,16 @@ $("#loadingCancel").addEventListener("click", () => {
   if (loadingAbort) loadingAbort.abort();
 });
 
-$("#swapBtn").addEventListener("click", () => {
-  layoutPrefs.chartFirst = !layoutPrefs.chartFirst;
+$("#chartTopChk").addEventListener("change", (event) => {
+  layoutPrefs.chartFirst = event.target.checked;
   saveLayoutPrefs();
   applyLayoutPrefs();
+});
+// The options popovers close on any click outside them.
+document.addEventListener("click", (event) => {
+  for (const box of document.querySelectorAll("details.opt-box[open]")) {
+    if (!box.contains(event.target)) box.open = false;
+  }
 });
 $("#collapseBtn").addEventListener("click", () => {
   layoutPrefs.tableCollapsed = !layoutPrefs.tableCollapsed;

@@ -10,7 +10,7 @@ updated: 2026-07-30
 
 Games at impossible scale. Take a game meant for a kitchen table — War,
 Blackjack, more to come — and expand it far beyond what could ever be played
-in real life: 100 players, 100 decks, a million rounds, thousands of games in
+in real life: 200 players, 200 decks, a million rounds, thousands of games in
 parallel. Simulate the entire thing in seconds, then play it back in the
 browser at any speed: scrub it like a video, watch rounds unfold card by
 card, and chart how the game evolved.
@@ -22,13 +22,13 @@ Built as a headless Python engine (no dependencies) with a web frontend.
 
 ## Features
 
-- **Two games** — War (pure luck, up to 100 players) and Blackjack (multi-seat
+- **Two games** — War (pure luck, up to 200 players) and Blackjack (multi-seat
   vs the dealer, S17, 3:2 blackjacks, doubling, pair splitting)
 - **Pluggable strategies** — assign hit/stand policies per blackjack seat
   (basic strategy, hit-below-N, never-bust) and measure which actually wins:
   the batch view charts EV per hand by strategy over hundreds of thousands of
   hands
-- **2-100 players, 1-100 decks** — scale games far beyond what's physically playable
+- **2-200 players, 1-200 decks** — scale games far beyond what's physically playable
 - **Instant simulation** — hundreds of thousands of rounds per second; even a
   2,600-card game finishes in seconds
 - **Video-style playback** — play/pause, 1 to 5,000 rounds/sec, a scrubber,

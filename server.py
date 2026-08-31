@@ -38,8 +38,8 @@ ROOT = Path(__file__).parent
 WEB_DIR = ROOT / "web"
 CARDS_DIR = ROOT / "cards"
 
-MAX_PLAYERS = 100
-MAX_DECKS = 100
+MAX_PLAYERS = 200
+MAX_DECKS = 200
 DEFAULT_MAX_ROUNDS = 1_000_000  # war safety cap (games stopped here are "unfinished")
 MAX_ROUNDS_CEILING = 20_000_000
 MAX_BJ_ROUNDS = 10_000
