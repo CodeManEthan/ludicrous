@@ -170,3 +170,51 @@ fn a_capped_game_is_still_seekable() {
     // Past the end clamps rather than panicking.
     assert_eq!(p.round_view(999).unwrap(), last);
 }
+
+/// The progress-reporting stepper must produce exactly what the one-call
+/// `prepare` produces, whatever the step size: same chart, same checkpoints,
+/// same eliminations, same views. Otherwise a game simulated with a progress
+/// bar would differ from the same seed simulated without one.
+#[test]
+fn stepped_prepare_is_byte_identical_to_one_call() {
+    use ludicrous_wasm::WarPrepareJob;
+    let cases: &[(u32, u32, f64, f64)] = &[
+        (2, 1, 1.0, 0.0),
+        (6, 3, 7.0, 0.0),
+        (6, 3, 7.0, 50.0),
+        (26, 13, 3.0, 0.0),
+        (40, 20, 2.0, 1_000_000.0),
+        (100, 50, 5.0, 300_000.0),
+    ];
+    for &(players, decks, seed, cap) in cases {
+        for &budget in &[1u32, 7, 1_000, 65_536] {
+            let mut one = prepare(players, decks, seed, cap, 0.0).unwrap();
+            let mut job = WarPrepareJob::new(players, decks, seed, cap, 0.0).unwrap();
+            let mut steps = 0;
+            while !job.step(budget) {
+                steps += 1;
+                assert!(job.round() <= one.rounds());
+            }
+            assert!(job.done());
+            let mut two = job.finish().unwrap();
+            let tag = format!("{players}p{decks}d seed {seed} cap {cap} budget {budget} ({steps} steps)");
+            assert_eq!(one.rounds(), two.rounds(), "{tag}");
+            assert_eq!(one.summary_json(), two.summary_json(), "{tag}");
+            assert_eq!(one.chart_rounds(), two.chart_rounds(), "{tag}");
+            assert_eq!(one.chart_series(), two.chart_series(), "{tag}");
+            assert_eq!(one.initial_counts(), two.initial_counts(), "{tag}");
+            assert_eq!(one.elim_rounds(), two.elim_rounds(), "{tag}");
+            assert_eq!(one.elim_players(), two.elim_players(), "{tag}");
+            assert_eq!(one.standings(), two.standings(), "{tag}");
+            assert_eq!(one.checkpoint_count(), two.checkpoint_count(), "{tag}");
+            assert_eq!(one.checkpoint_bytes(), two.checkpoint_bytes(), "{tag}");
+            assert_eq!(one.checkpoint_interval(), two.checkpoint_interval(), "{tag}");
+            let last = one.rounds();
+            for r in [1, last / 3, last / 2, last] {
+                if r >= 1 {
+                    assert_eq!(one.round_view(r).unwrap(), two.round_view(r).unwrap(), "{tag} round {r}");
+                }
+            }
+        }
+    }
+}

@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "crates/ludicrous-core",
-    "crates/ludicrous-bench",
+    "crates/ludicrous-bench", "crates/ludicrous-batch",
     "crates/ludicrous-wasm",
 ]
 

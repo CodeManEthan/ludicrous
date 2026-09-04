@@ -242,6 +242,10 @@ details.opt-box[open] > summary { background: #2c2c2a; }
   font-size: 11px;
 }
 .opt-panel .btn { text-align: center; }
+.opt-panel .chk input[type="number"] { width: 10ch; }
+.opt-panel .chk input[type="number"]:disabled { opacity: 0.45; }
+.estimate { font-size: 12px; line-height: 1.4; color: var(--muted); max-width: 240px; }
+.estimate.warn { color: #e5c894; }
 
 /* --- out-strip: eliminated players collapsed under the grid --- */
 .out-strip {

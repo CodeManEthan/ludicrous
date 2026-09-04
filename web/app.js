@@ -99,6 +99,7 @@ function saveLayoutPrefs() {
 function applyLayoutPrefs() {
   $("#results").classList.toggle("chart-first", !!layoutPrefs.chartFirst);
   $("#chartTopChk").checked = !!layoutPrefs.chartFirst;
+  $("#slowOpening").checked = layoutPrefs.slowOpening !== false;
   $("#table").classList.toggle("collapsed", !!layoutPrefs.tableCollapsed);
   $("#collapseBtn").textContent = layoutPrefs.tableCollapsed ? "+" : "−";
   $("#collapseBtn").title = layoutPrefs.tableCollapsed ? "Expand the cards" : "Collapse the cards";
@@ -161,11 +162,18 @@ function hideLoading() {
   $("#loading").hidden = true;
 }
 
-function updateLoadingProgress(done, total, unit) {
+function updateLoadingCount(text) {
+  $("#loadingCount").hidden = false;
+  $("#loadingCount").textContent = text;
+}
+
+function updateLoadingProgress(done, total, unit, label) {
   $("#loadingBarWrap").hidden = false;
   $("#loadingCount").hidden = false;
   $("#loadingBar").style.width = `${(100 * done) / Math.max(total, 1)}%`;
-  $("#loadingCount").textContent = `${fmt.format(done)} / ${fmt.format(total)} ${unit}`;
+  $("#loadingCount").textContent = label !== undefined
+    ? `${label} ${unit}`
+    : `${fmt.format(done)} / ${fmt.format(total)} ${unit}`;
 }
 
 // Read an /api/batch/stream response: NDJSON progress lines, then exactly
@@ -209,9 +217,13 @@ function v2Start() {
   if (v2Worker) return v2Worker;
   const worker = new Worker(V2_WORKER_URL);
   worker.onmessage = (event) => {
-    const { id, ok, result, error } = event.data;
+    const { id, ok, result, error, progress } = event.data;
     const entry = v2Pending.get(id);
     if (!entry) return;
+    if (progress) {  // interim: the request is still running
+      if (entry.onProgress) entry.onProgress(progress);
+      return;
+    }
     v2Pending.delete(id);
     if (ok) entry.resolve(result);
     else entry.reject(new Error(error));
@@ -227,13 +239,24 @@ function v2Start() {
   return worker;
 }
 
-function v2Send(message) {
+function v2Send(message, onProgress) {
   const worker = v2Start();
   const id = ++v2Seq;
-  return new Promise((resolve, reject) => {
-    v2Pending.set(id, { resolve, reject });
+  const promise = new Promise((resolve, reject) => {
+    v2Pending.set(id, { resolve, reject, onProgress });
     worker.postMessage({ ...message, id });
   });
+  promise.requestId = id;
+  return promise;
+}
+
+// Errors that must NOT fall back to the server: the user canceled, or the
+// engine rejected the config (the server would reject it the same way, or
+// worse, grind through it in Python).
+function finalError(message) {
+  const error = new Error(message);
+  error.v2Final = true;
+  return error;
 }
 
 // Which engine a click on Simulate should use. The URL wins for the run it
@@ -328,16 +351,127 @@ function buildV2State(result, names) {
   };
 }
 
+// The Max rounds cap is opt-in; 0 means no cap everywhere (URL, API, engine).
+function roundCap() {
+  if (!$("#capRounds").checked) return 0;
+  return Math.max(0, Math.floor(Number($("#maxRounds").value) || 0));
+}
+
+function setRoundCap(value) {
+  const n = Math.max(0, Math.floor(Number(value) || 0));
+  $("#capRounds").checked = n > 0;
+  if (n > 0) $("#maxRounds").value = n;
+  $("#maxRounds").disabled = n === 0;
+}
+
+// ----------------------------------------------------- rounds calculator
+//
+// How long will this game be? rounds-grid.json holds, per (players, decks)
+// cell, the median / p10 / p90 round count over 50 seeds and the native
+// rounds/s, measured offline (core-rs/crates/ludicrous-bench/examples/grid.rs).
+// Rounds grow ~quadratically with the shoe and barely with players, so a
+// bilinear interpolation in log space between the four surrounding cells is
+// plenty. The wasm build runs at about a third of native speed.
+
+let roundsGrid = null;
+
+fetch("/rounds-grid.json")
+  .then((r) => (r.ok ? r.json() : null))
+  .then((grid) => { roundsGrid = grid; updateEstimateLine(); })
+  .catch(() => {});
+
+function estimateRounds(players, decks) {
+  if (decks * 52 < players) return null;
+  if (!roundsGrid) return undefined;
+  const { players: ps, decks: ds, cells } = roundsGrid;
+  const bracket = (axis, v) => {
+    const c = Math.min(Math.max(v, axis[0]), axis[axis.length - 1]);
+    let i = 0;
+    while (i < axis.length - 2 && axis[i + 1] < c) i++;
+    const lo = axis[i], hi = axis[i + 1];
+    const t = hi === lo ? 0 : (Math.log(c) - Math.log(lo)) / (Math.log(hi) - Math.log(lo));
+    return [lo, hi, t];
+  };
+  const [p0, p1, tp] = bracket(ps, players);
+  const [d0, d1, td] = bracket(ds, decks);
+  const corners = [[p0, d0], [p0, d1], [p1, d0], [p1, d1]].map(([p, d]) => cells[`${p}:${d}`]);
+  // A corner can be missing where the shoe is too small for the players;
+  // fall back to whatever corners exist (the estimate is coarse anyway).
+  const present = corners.filter(Boolean);
+  if (!present.length) return null;
+  const pick = (k) => {
+    const v = corners.map((c) => (c ? Math.log(c[k]) : null));
+    const fill = present.reduce((a, c) => a + Math.log(c[k]), 0) / present.length;
+    const w = v.map((x) => (x === null ? fill : x));
+    const lo = w[0] * (1 - td) + w[1] * td;
+    const hi = w[2] * (1 - td) + w[3] * td;
+    return Math.exp(lo * (1 - tp) + hi * tp);
+  };
+  const median = pick(0), p10 = pick(1), p90 = pick(2), rps = pick(3);
+  const wasmRps = rps * (roundsGrid.wasm_speed_factor || 0.33);
+  return { median, p10, p90, seconds: median / wasmRps, wasmRps };
+}
+
+function describeEstimate(est, cap) {
+  if (est === null) return "Not enough cards for that many players.";
+  if (est === undefined) return "";
+  let text = `Typical game: ~${fmtNum(est.median)} rounds (${fmtNum(est.p10)} to ${fmtNum(est.p90)}) · ` +
+    `about ${fmtDuration(Math.max(1, est.seconds)).replace("~", "")} to simulate`;
+  if (cap && cap < est.p90) {
+    text += ` · a cap of ${fmtNum(cap)} rounds will stop ${cap < est.median ? "most" : "some"} games early`;
+  }
+  return text;
+}
+
+function updateEstimateLine() {
+  const line = $("#estimateLine");
+  if (gameType !== "war") { line.hidden = true; return; }
+  const est = estimateRounds(Number($("#players").value), Number($("#decks").value));
+  const text = describeEstimate(est, roundCap());
+  line.textContent = text;
+  line.hidden = !text;
+  line.classList.toggle("warn", est === null);
+}
+
 async function simulateV2() {
   const players = Number($("#players").value);
   const decks = Number($("#decks").value);
-  const maxRounds = Number($("#maxRounds").value) || 1_000_000;
+  const maxRounds = roundCap();
   const parsed = parseSeed($("#seed").value);
   const seed = parsed === null ? Math.floor(Math.random() * 1e9) : parsed;
   const nameMode = $("#nameMode").value;
 
   pause();
-  const result = await v2Send({ type: "prepare", players, decks, seed, maxRounds });
+  const estimate = estimateRounds(players, decks);
+  if (estimate === null) throw finalError("Not enough cards for that many players — add decks or remove players.");
+  loadingAbort = new AbortController();
+  showLoading(
+    `Simulating War — ${fmt.format(players)} players, ${fmt.format(decks)} decks`,
+    describeEstimate(estimate, maxRounds));
+  const startedAt = performance.now();
+  // Progress against the typical long game (p90). Clamped short of full so
+  // the bar never sits at 100% while the engine is still going.
+  // Without an estimate (grid not loaded) there is no bar, only the count.
+  const p90 = estimate ? estimate.p90 : 0;
+  const target = maxRounds && p90 ? Math.min(maxRounds, p90) : maxRounds || p90;
+  const request = v2Send({ type: "prepare", players, decks, seed, maxRounds }, (p) => {
+    const secs = (performance.now() - startedAt) / 1000;
+    const unit = `rounds · ${fmt.format(p.alive)} still in · ${secs.toFixed(1)} s`;
+    if (target) updateLoadingProgress(Math.min(p.rounds, target * 0.95), target, unit, fmtNum(p.rounds));
+    else updateLoadingCount(`${fmtNum(p.rounds)} ${unit}`);
+  });
+  const onAbort = () => v2Send({ type: "cancel", target: request.requestId });
+  loadingAbort.signal.addEventListener("abort", onAbort);
+  let result;
+  try {
+    result = await request;
+  } catch (error) {
+    if (error.message === "canceled") throw finalError("Simulation canceled.");
+    throw finalError(error.message);
+  } finally {
+    loadingAbort.signal.removeEventListener("abort", onAbort);
+    hideLoading();
+  }
   console.info(
     `[ludicrous] v2 prepare: ${fmt.format(result.rounds)} rounds in ` +
     `${result.prepareMs.toFixed(1)} ms · ${fmt.format(result.checkpoints)} checkpoints ` +
@@ -432,6 +566,7 @@ function updateForm() {
   $("#gamesLabel").hidden = !batch;
   $("#roundsLabel").hidden = !blackjack;
   $("#maxRoundsLabel").hidden = blackjack;
+  updateEstimateLine();
   $("#stratWrap").hidden = !blackjack;
   $("#namesLabel").hidden = batch || blackjack;
   $("#importBtn").hidden = batch;
@@ -493,6 +628,7 @@ async function simulate(event) {
         await simulateV2();
         return;
       } catch (error) {
+        if (error.v2Final) throw error;
         console.warn(
           "[ludicrous] client-side (v2) engine unavailable — falling back to the server:",
           error);
@@ -509,7 +645,7 @@ async function simulate(event) {
       payload.rounds = Number($("#rounds").value);
       payload.strategies = selectedStrategies();
     } else {
-      payload.max_rounds = Number($("#maxRounds").value);
+      payload.max_rounds = roundCap();
     }
     loadingAbort = new AbortController();
     showLoading(gameType === "blackjack"
@@ -868,7 +1004,8 @@ function showFinale() {
 function fmtDuration(seconds) {
   if (seconds < 90) return `~${Math.max(1, Math.round(seconds))}s`;
   if (seconds < 5400) return `~${Math.round(seconds / 60)}m`;
-  return `~${(seconds / 3600).toFixed(1)}h`;
+  if (seconds < 99 * 3600) return `~${(seconds / 3600).toFixed(1)}h`;
+  return `~${Math.round(seconds / 86400)}d`;
 }
 
 // -------------------------------------------------------- highlight reel
@@ -956,7 +1093,7 @@ function renderHighlights() {
   strip.innerHTML = moments
     .map((m, i) =>
       `<button class="hl-chip" data-hl="${i}" type="button">` +
-      `${m.label} <span class="hint">· r${fmt.format(m.round)}</span></button>`)
+      `${m.label} <span class="hint" title="round ${fmt.format(m.round)}">· r${fmtNum(m.round)}</span></button>`)
     .join("");
 }
 
@@ -1005,8 +1142,91 @@ function speedFor(value) {
   return Number(value);
 }
 
+// ---- elimination-aware schedule for the scaled speeds
+//
+// A big War game is a crowded opening (three quarters of the field goes out
+// inside the first hand's worth of rounds), a middle where the last dozen
+// drop one by one, and a duel that is most of the game by round count. At
+// one constant rate the opening is over in a millisecond. So the "game in
+// ~N" budget is split by phase: the opening plays at a fixed slow pace, each
+// middle elimination gets the same beat, and the duel takes what is left,
+// never under 60%. Speed is constant inside a span between eliminations, so
+// the scrubber and round counter need to know nothing about this.
+const OPENING_RATE = 3;        // rounds/s while the field is crowded
+const OPENING_SHARE = 0.20;    // of the budget, at most
+const MIDDLE_SHARE = 0.20;
+const MIDDLE_MIN_BEAT = 0.5;   // seconds per elimination, when the budget allows
+
+function buildPlaybackPlan(budget) {
+  const total = state.rounds;
+  const players = state.summary.num_players;
+  const elims = state.elimSorted || [];
+  const bounds = [0];
+  for (const e of elims) {
+    if (e.round > 0 && e.round < total && e.round !== bounds[bounds.length - 1]) bounds.push(e.round);
+  }
+  bounds.push(total);
+  const crowded = Math.max(10, players / 4);
+  const spans = [];
+  let outSoFar = 0;
+  for (let i = 0; i + 1 < bounds.length; i++) {
+    while (outSoFar < elims.length && elims[outSoFar].round <= bounds[i]) outSoFar++;
+    const alive = players - outSoFar;
+    spans.push({
+      from: bounds[i], to: bounds[i + 1],
+      phase: alive > crowded ? "opening" : alive > 2 ? "middle" : "duel",
+    });
+  }
+  const rounds = (phase) => spans.filter((x) => x.phase === phase).reduce((a, x) => a + x.to - x.from, 0);
+  const middle = spans.filter((x) => x.phase === "middle");
+  const openingSecs = Math.min(OPENING_SHARE * budget, rounds("opening") / OPENING_RATE);
+  let beat = middle.length ? (MIDDLE_SHARE * budget) / middle.length : 0;
+  if (middle.length && beat < MIDDLE_MIN_BEAT && middle.length * MIDDLE_MIN_BEAT <= 0.25 * budget) {
+    beat = MIDDLE_MIN_BEAT;
+  }
+  const middleSecs = beat * middle.length;
+  const duelRounds = rounds("duel");
+  const duelSecs = Math.max(budget - openingSecs - middleSecs, 0.6 * budget);
+  const duelSpeed = Math.max(MIN_SCALED_SPEED, duelRounds / duelSecs);
+  for (const span of spans) {
+    const n = span.to - span.from;
+    span.speed = span.phase === "opening" ? OPENING_RATE
+      : span.phase === "middle" ? Math.max(MIN_SCALED_SPEED, n / beat)
+      : duelSpeed;
+  }
+  return { spans, duelSpeed, openingSecs, middleSecs, duelSecs };
+}
+
+function slowOpeningOn() {
+  return layoutPrefs.slowOpening !== false;
+}
+
+function playbackPlan(value) {
+  if (!value.startsWith("d") || !slowOpeningOn()) return null;
+  if (!state || state.game !== "war" || state.mode !== "full" || !state.elimSorted) return null;
+  state.plans ??= {};
+  return (state.plans[value] ??= buildPlaybackPlan(Number(value.slice(1))));
+}
+
+function spanAt(plan, at) {
+  const spans = plan.spans;
+  let lo = 0, hi = spans.length - 1;
+  while (lo < hi) {  // last span whose `from` is <= at
+    const mid = (lo + hi + 1) >> 1;
+    if (spans[mid].from <= at) lo = mid; else hi = mid - 1;
+  }
+  return spans[lo];
+}
+
+// Rounds/s at playhead position `at` for the selected speed.
+function playSpeedAt(at) {
+  const value = $("#speedSel").value;
+  const plan = playbackPlan(value);
+  return plan ? spanAt(plan, at).speed : speedFor(value);
+}
+
 function playSpeed() {
-  return speedFor($("#speedSel").value);
+  return playSpeedAt(pos);
 }
 
 // "10 rnd/s" means nothing for a 41,919-round game until you do the division
@@ -1017,9 +1237,10 @@ function updateSpeedLabels() {
   for (const option of $("#speedSel").options) {
     const base = (option.dataset.base ??= option.textContent);
     if (!full) { option.textContent = base; continue; }
-    const speed = speedFor(option.value);
+    const plan = playbackPlan(option.value);
+    const speed = plan ? plan.duelSpeed : speedFor(option.value);
     option.textContent = option.value.startsWith("d")
-      ? `${base} · ${compact(Math.round(speed))} rnd/s`
+      ? `${base} · ${fmtNum(Math.round(speed))} rnd/s${plan ? " in the duel" : ""}`
       : `${base} · ${fmtDuration(state.rounds / speed)}`;
   }
 }
@@ -1028,17 +1249,17 @@ function renderStats() {
   const { summary, stats } = state;
   const MASK = "?";  // suspense mode: outcome tiles stay masked until reveal
   const hide = state.suspense;
-  const tileHtmlMasked = ([label, value]) =>
+  const tileHtmlMasked = ([label, value, exact]) =>
     `<div class="tile"><div class="label">${label}</div>` +
-    `<div class="value${value === MASK ? " masked" : ""}" title="${value}">${value}</div></div>`;
+    `<div class="value${value === MASK ? " masked" : ""}" title="${exact ?? value}">${value}</div></div>`;
   let tiles;
   if (state.game === "blackjack") {
     const winner = summary.winner ? summary.seats[summary.winner] : null;
     tiles = [
       ["Winner",
        hide ? MASK : winner ? `${winner.name} · ${signed(winner.bankroll)}u` : "—"],
-      ["Rounds", fmt.format(summary.rounds)],
-      ["Hands", fmt.format(stats.hands)],
+      ["Rounds", fmtNum(summary.rounds), fmt.format(summary.rounds)],
+      ["Hands", fmtNum(stats.hands), fmt.format(stats.hands)],
       ["Table net", hide ? MASK : `${stats.net >= 0 ? "+" : ""}${fmt.format(stats.net)}u`],
       ["Blackjacks", hide ? MASK : fmt.format(stats.blackjacks)],
       ["Splits", hide ? MASK : fmt.format(stats.splits ?? 0)],
@@ -1050,11 +1271,13 @@ function renderStats() {
     const winnerName = summary.winner ? state.names[summary.winner] : "—";
     tiles = [
       ["Winner", hide ? MASK : summary.completed ? winnerName : "unfinished"],
-      ["Rounds", fmt.format(summary.rounds)],
-      ["Wars", hide ? MASK : fmt.format(stats.wars)],
+      ["Rounds", fmtNum(summary.rounds), fmt.format(summary.rounds)],
+      ["Wars", hide ? MASK : fmtNum(stats.wars), hide ? MASK : fmt.format(stats.wars)],
       ["Deepest war", hide ? MASK : stats.deepest_war ? `×${stats.deepest_war}` : "—"],
-      ["Biggest pot", hide ? MASK : `${fmt.format(stats.biggest_pot)} cards`],
-      ["Players / cards", `${summary.num_players} / ${fmt.format(stats.total_cards)}`],
+      ["Biggest pot", hide ? MASK : `${fmtNum(stats.biggest_pot)} cards`,
+       hide ? MASK : `${fmt.format(stats.biggest_pot)} cards`],
+      ["Players / cards", `${fmt.format(summary.num_players)} / ${fmtNum(stats.total_cards)}`,
+       `${fmt.format(summary.num_players)} / ${fmt.format(stats.total_cards)}`],
       ["Seed", String(summary.seed)],
     ];
   }
@@ -1150,7 +1373,9 @@ function describeRound(roundData, round) {
 function render(round) {
   current = round;
   $("#scrubber").value = round;
-  $("#roundLabel").textContent = `Round ${fmt.format(round)} / ${fmt.format(state.rounds)}`;
+  const label = $("#roundLabel");
+  label.textContent = `Round ${fmtNum(round)} / ${fmtNum(state.rounds)}`;
+  label.title = `Round ${fmt.format(round)} of ${fmt.format(state.rounds)}`;
   if (state.suspense && round >= state.rounds) revealResults();
   if (state.game === "blackjack") {
     renderBlackjackRound(round);
@@ -1174,27 +1399,38 @@ function renderWarRound(round) {
 function paintWarRound(round, roundData, wins) {
   const warPlayers = roundData?.war ? new Set(roundData.war.players) : null;
   const linger = elimHideAfter();
+  if (!state.rankOf) state.rankOf = new Map(state.standings.map((pid, i) => [pid, i + 1]));
 
+  // At 1000 tiles, touching every tile every frame is the frame budget. Each
+  // tile remembers what it last painted and is skipped when nothing changed
+  // -- in a long game that is every eliminated tile, which is most of them.
   for (const tile of $("#grid").children) {
     const pid = Number(tile.dataset.pid);
     const outAt = state.elimRound[pid];
     const out = outAt !== undefined && outAt <= round;
-    tile.hidden = out && linger !== null && round >= outAt + linger;
-    tile.classList.toggle("out", out);
-    tile.classList.toggle("winner", roundData?.win?.winner === pid);
-    tile.classList.toggle("war", !out && !!warPlayers?.has(pid));
-    const img = tile.querySelector("img");
-    const meta = tile.querySelector(".pmeta");
+    const hidden = out && linger !== null && round >= outAt + linger;
+    const winner = roundData?.win?.winner === pid;
+    const war = !out && !!warPlayers?.has(pid);
+    let src, text;
     if (out) {
-      img.src = CARD_BACK;
-      meta.textContent = `#${state.standings.indexOf(pid) + 1}`;
+      src = CARD_BACK;
+      text = `#${state.rankOf.get(pid) || "?"}`;
     } else {
       const face = roundData?.faces[pid];
-      const next = face ? cardUrl(face) : CARD_BACK;
-      if (img.getAttribute("src") !== next) img.src = next;
+      src = face ? cardUrl(face) : CARD_BACK;
       const count = round === 0 ? state.initialCounts[pid] : roundData?.counts?.[pid] ?? 0;
-      meta.textContent = `${fmt.format(count)} · ${wins[pid] || 0}W`;
+      text = `${fmtNum(count)} · ${fmtNum(wins[pid] || 0)}W`;
     }
+    const sig = `${hidden}|${out}|${winner}|${war}|${src}|${text}`;
+    if (tile._sig === sig) continue;
+    tile._sig = sig;
+    tile.hidden = hidden;
+    tile.classList.toggle("out", out);
+    tile.classList.toggle("winner", winner);
+    tile.classList.toggle("war", war);
+    const img = tile.querySelector("img");
+    if (img.getAttribute("src") !== src) img.src = src;
+    tile.querySelector(".pmeta").textContent = text;
   }
   renderOutStrip(round);
   $("#banner").innerHTML = describeRound(roundData, round);
@@ -1228,7 +1464,7 @@ function renderOutStrip(round) {
   if (strip._count === out.length) return;
   strip._count = out.length;
   strip.innerHTML =
-    `<span class="out-label">Out · ${fmt.format(out.length)}</span>` +
+    `<span class="out-label">Out · ${fmtNum(out.length)}</span>` +
     out.slice().reverse().map(({ player, round: r }) =>
       `<span class="out-chip" title="eliminated round ${fmt.format(r)}">` +
       `<b>#${state.standings.indexOf(player) + 1}</b> ${state.names[player]}</span>`)
@@ -1307,7 +1543,7 @@ function renderElimFeed() {
   feed.innerHTML = state.eliminations
     .map(({ round, player }) => {
       const place = state.standings.indexOf(player) + 1;
-      return `<li><span class="rnd">Round ${fmt.format(round)}</span> — ${state.names[player]} out (#${place})</li>`;
+      return `<li><span class="rnd" title="round ${fmt.format(round)}">Round ${fmtNum(round)}</span> — ${state.names[player]} out (#${place})</li>`;
     })
     .join("");
 }
@@ -1345,8 +1581,26 @@ function tick(ts) {
   if (!lastTs) lastTs = ts;
   const dt = (ts - lastTs) / 1000;
   lastTs = ts;
-  const speed = reel ? REEL_SPEED : playSpeed();
-  let next = Math.min(pos + speed * dt, state.rounds);
+  let next;
+  if (reel) {
+    next = Math.min(pos + REEL_SPEED * dt, state.rounds);
+  } else {
+    // Advance span by span: a frame that crosses into a slower span spends
+    // the remaining time at that span's speed, so a long frame never skips
+    // the opening.
+    const plan = playbackPlan($("#speedSel").value);
+    let left = dt;
+    next = pos;
+    for (let guard = 0; left > 0 && next < state.rounds && guard < 64; guard++) {
+      const span = plan ? spanAt(plan, next) : null;
+      const speed = span ? span.speed : speedFor($("#speedSel").value);
+      const edge = span ? span.to : state.rounds;
+      const step = Math.min(speed * left, edge - next);
+      left -= step / speed;
+      next += step;
+    }
+    next = Math.min(next, state.rounds);
+  }
 
   if (reel && next >= reel.until) {
     // Land on the moment's last round (so it actually renders — the finale
@@ -1395,12 +1649,22 @@ function renderLegend() {
   $("#legend").innerHTML = html;
 }
 
-function compact(n) {
-  if (n < 0) return "-" + compact(-n);
-  if (n >= 1e6) return (n / 1e6).toFixed(n % 1e6 ? 1 : 0) + "M";
-  if (n >= 1e3) return (n / 1e3).toFixed(n % 1e3 ? 1 : 0) + "k";
-  return String(n);
+// Numbers in boxes are compact ("7.07M", "45.2k"); numbers in sentences are
+// exact ("7,070,047"). Three significant figures, trailing zeros dropped,
+// exact below 10,000. The exact value belongs in the tooltip.
+function fmtNum(n) {
+  if (n == null || !Number.isFinite(n)) return "—";
+  if (n < 0) return "-" + fmtNum(-n);
+  const sig = (v) => {
+    const digits = v >= 100 ? 0 : v >= 10 ? 1 : 2;
+    return String(Number(v.toFixed(digits)));
+  };
+  if (n >= 1e9) return sig(n / 1e9) + "B";
+  if (n >= 1e6) return sig(n / 1e6) + "M";
+  if (n >= 1e4) return sig(n / 1e3) + "k";
+  return fmt.format(Math.round(n));
 }
+const compact = fmtNum;
 
 function setupCanvas(canvas) {
   const rect = canvas.parentElement.getBoundingClientRect();
@@ -1427,6 +1691,10 @@ function drawChart() {
     xMax = Math.min(
       Math.max(state.rounds, 1),
       Math.ceil(Math.max(pos * 1.25, sampleGap * 20, 50)));
+    // Snap to 5% steps so the field layer is not redrawn every frame.
+    if (xMax < state.rounds) {
+      xMax = Math.min(state.rounds, Math.ceil(Math.pow(1.05, Math.ceil(Math.log(xMax) / Math.log(1.05)))));
+    }
   }
   const { yMin, yMax } = state.chartRange;
   const pad = { left: 46, right: 12, top: 8, bottom: 22 };
@@ -1489,11 +1757,53 @@ function drawChart() {
 
   const top = topSeries();
   const topIds = new Set(top.map((t) => String(t.pid)));
-  for (const pid of Object.keys(series)) {
-    if (!topIds.has(pid)) drawSeries(pid, FIELD, 1);
-  }
+  drawField(ctx, width, height, xMax, series, topIds, x, y, xs);
   for (let i = top.length - 1; i >= 0; i--) drawSeries(String(top[i].pid), top[i].color, 2);
   drawOverlay();
+}
+
+// The field: every series that is not one of the top few, in one muted
+// color. With 1000 players that is 1000 polylines, so it is stroked into an
+// offscreen canvas and blitted, redrawn only when the axes move. In suspense
+// the x axis grows with the playhead; drawChart snaps it to 5% steps, which
+// turns thousands of redraws into a couple of hundred across a whole game.
+// Series stop at their elimination and the loop stops past the window, so
+// the cost is bounded by points actually on screen.
+let fieldCache = null;
+
+function drawField(ctx, width, height, xMax, series, topIds, x, y, xs) {
+  const key = `${loadGen}|${width}|${height}|${xMax}|${chartScale.yMax}|${[...topIds].join(",")}`;
+  if (!fieldCache || fieldCache.key !== key) {
+    const layer = fieldCache?.layer || document.createElement("canvas");
+    if (layer.width !== ctx.canvas.width || layer.height !== ctx.canvas.height) {
+      layer.width = ctx.canvas.width;
+      layer.height = ctx.canvas.height;
+    }
+    const fctx = layer.getContext("2d");
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+    fctx.clearRect(0, 0, layer.width, layer.height);
+    fctx.setTransform(ctx.getTransform());
+    fctx.strokeStyle = FIELD;
+    fctx.lineWidth = 1;
+    fctx.beginPath();
+    for (const pid of Object.keys(series)) {
+      if (topIds.has(pid)) continue;
+      const values = series[pid];
+      let started = false;
+      for (let i = 0; i < xs.length; i++) {
+        if (values[i] == null) break;
+        if (!started) { fctx.moveTo(x(xs[i]), y(values[i])); started = true; }
+        else fctx.lineTo(x(xs[i]), y(values[i]));
+        if (xs[i] > xMax) break;
+      }
+    }
+    fctx.stroke();
+    fieldCache = { key, layer };
+  }
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(fieldCache.layer, 0, 0);
+  ctx.restore();
 }
 
 function drawOverlay() {
@@ -1567,11 +1877,11 @@ function handleChartHover(event) {
   const rows = topSeries()
     .map(({ pid, color }) => {
       const value = state.chartData.series[pid]?.[idx];
-      const text = value == null ? "out" : fmt.format(value);
+      const text = value == null ? "out" : fmtNum(value);
       return `<div><span class="dot" style="background:${color}"></span>${state.names[pid]}: <span class="t-val">${text}</span></div>`;
     })
     .join("");
-  tooltip.innerHTML = `<div class="t-round">Round ${fmt.format(xs[idx])}</div>${rows}`;
+  tooltip.innerHTML = `<div class="t-round">Round ${fmtNum(xs[idx])}</div>${rows}`;
   tooltip.hidden = false;
   const wrapRect = $("#chartWrap").getBoundingClientRect();
   const flip = px > wrapRect.width - 170;
@@ -1602,7 +1912,7 @@ async function runBatch() {
       payload.rounds = Number($("#rounds").value);
       payload.strategies = selectedStrategies();
     } else {
-      payload.max_rounds = Number($("#maxRounds").value);
+      payload.max_rounds = roundCap();
     }
     const work = gameType === "blackjack" ? payload.games * payload.rounds : payload.games;
     const big = gameType === "blackjack" ? work >= 2_000_000 : payload.games >= 2000;
@@ -1641,8 +1951,8 @@ async function runBatch() {
   }
 }
 
-function tileHtml([label, value]) {
-  return `<div class="tile"><div class="label">${label}</div><div class="value" title="${value}">${value}</div></div>`;
+function tileHtml([label, value, exact]) {
+  return `<div class="tile"><div class="label">${label}</div><div class="value" title="${exact ?? value}">${value}</div></div>`;
 }
 
 // A value that would clip steps down a font size (twice if needed) — the
@@ -1691,13 +2001,15 @@ function renderBatch() {
     "<tr><th></th><th>Seed</th><th>Rounds</th><th>Wars</th><th>Deepest</th><th>Biggest pot</th><th>Winner</th><th></th></tr>";
   const r = agg.rounds;
   const tiles = [
-    ["Games", agg.completed === agg.games ? fmt.format(agg.games) : `${fmt.format(agg.completed)}/${fmt.format(agg.games)}`],
-    ["Mean rounds", `${fmt.format(Math.round(r.mean))} ±${fmt.format(Math.round(r.stdev))}`],
-    ["Median rounds", fmt.format(Math.round(r.median))],
-    ["Range", `${fmt.format(r.min)}–${fmt.format(r.max)}`],
-    ["Wars / game", fmt.format(Math.round(agg.mean_wars))],
+    ["Games", agg.completed === agg.games ? fmtNum(agg.games) : `${fmtNum(agg.completed)}/${fmtNum(agg.games)}`,
+     agg.completed === agg.games ? fmt.format(agg.games) : `${fmt.format(agg.completed)}/${fmt.format(agg.games)}`],
+    ["Mean rounds", `${fmtNum(r.mean)} ±${fmtNum(r.stdev)}`,
+     `${fmt.format(Math.round(r.mean))} ±${fmt.format(Math.round(r.stdev))}`],
+    ["Median rounds", fmtNum(r.median), fmt.format(Math.round(r.median))],
+    ["Range", `${fmtNum(r.min)}–${fmtNum(r.max)}`, `${fmt.format(r.min)}–${fmt.format(r.max)}`],
+    ["Wars / game", fmtNum(agg.mean_wars), fmt.format(Math.round(agg.mean_wars))],
     ["Deepest war", `×${agg.deepest_war}`],
-    ["Biggest pot", `${fmt.format(agg.biggest_pot)} cards`],
+    ["Biggest pot", `${fmtNum(agg.biggest_pot)} cards`, `${fmt.format(agg.biggest_pot)} cards`],
     [`Games / sec (${elapsed.toFixed(1)}s total)`, `${compact(Math.round(agg.games / elapsed))}/s`],
     ["Base seed", String(config.base_seed)],
   ];
@@ -1719,8 +2031,8 @@ function renderBlackjackBatch() {
     "<tr><th></th><th>Seed</th><th>Session net</th><th>Best seat</th><th>Worst seat</th><th></th></tr>";
   const s = agg.session_net;
   const tiles = [
-    ["Sessions", fmt.format(agg.games)],
-    ["Hands", fmt.format(agg.hands)],
+    ["Sessions", fmtNum(agg.games), fmt.format(agg.games)],
+    ["Hands", fmtNum(agg.hands), fmt.format(agg.hands)],
     ["Overall EV", `${(agg.ev * 100).toFixed(2)}%`],
     ["Net units", `${signed(agg.net)}u`],
     ["Session net (mean ± spread)", `${signed(s.mean)} ±${fmt.format(Math.round(s.stdev))}u`],
@@ -1936,8 +2248,8 @@ function renderOutliers() {
     <tr>
       <td class="otype">${type}</td>
       <td>${game.seed}</td>
-      <td>${fmt.format(game.rounds)}</td>
-      <td>${fmt.format(game.wars)}</td>
+      <td title="${fmt.format(game.rounds)}">${fmtNum(game.rounds)}</td>
+      <td title="${fmt.format(game.wars)}">${fmtNum(game.wars)}</td>
       <td>×${game.deepest_war}</td>
       <td>${game.biggest_pot}</td>
       <td>${game.completed ? `Seat ${game.winner}` : `<span class="otype">unfinished (hit cap)</span>`}</td>
@@ -1953,10 +2265,11 @@ function replaySeed(seed) {
   const nameModeBefore = $("#nameMode").value;
   $("#nameMode").value = "default";  // batch reports seats, not names — match it
   setMode("single");
-  // Batches run on the server (v1 seed namespace, MT19937). The same seed on
-  // the v2 engine (xoshiro) is a DIFFERENT game, so a replayed outlier must
-  // go through v1 or it won't be the game the table promised.
-  urlEngine = "v1";
+  // A seed names a different game in each engine's namespace (v1 = Python
+  // MT19937, v2 = Rust xoshiro), so the replay has to use the engine the
+  // batch ran on or it won't be the game the table promised.
+  urlEngine = batchData && batchData.engine === "v2" ? "v2" : "v1";
+  setRoundCap(batchData ? batchData.config.max_rounds : 0);
   $("#setup").requestSubmit();
   $("#nameMode").value = nameModeBefore;  // payload is read synchronously above
 }
@@ -2003,6 +2316,18 @@ $("#collapseBtn").addEventListener("click", () => {
   saveLayoutPrefs();
   applyLayoutPrefs();
 });
+$("#slowOpening").addEventListener("change", (event) => {
+  layoutPrefs.slowOpening = event.target.checked;
+  saveLayoutPrefs();
+  if (state) { state.plans = null; updateSpeedLabels(); }
+});
+$("#capRounds").addEventListener("change", (event) => {
+  $("#maxRounds").disabled = !event.target.checked;
+  updateEstimateLine();
+});
+$("#maxRounds").addEventListener("input", updateEstimateLine);
+$("#players").addEventListener("input", updateEstimateLine);
+$("#decks").addEventListener("input", updateEstimateLine);
 $("#elimDisplay").addEventListener("change", (event) => {
   layoutPrefs.elimDisplay = event.target.value;
   saveLayoutPrefs();
@@ -2051,7 +2376,7 @@ $("#histWrap").addEventListener("mousemove", (event) => {
   barHover(event, $("#histWrap"), $("#histTip"), histBins.length, 44, 12, (i) => {
     const bin = histBins[i];
     const pct = ((100 * bin.count) / batchData.aggregate.games).toFixed(1);
-    return `<div class="t-label">${fmt.format(Math.round(bin.lo))}–${fmt.format(Math.round(bin.hi))} ${blackjack ? "units" : "rounds"}</div>` +
+    return `<div class="t-label">${fmtNum(bin.lo)}–${fmtNum(bin.hi)} ${blackjack ? "units" : "rounds"}</div>` +
            `<div><span class="t-val">${fmt.format(bin.count)}</span> ${blackjack ? "sessions" : "games"} (${pct}%)</div>`;
   });
 });
@@ -2127,7 +2452,11 @@ function applyUrlParams(params) {
   if (params.has("decks")) $("#decks").value = params.get("decks");
   if (params.has("rounds")) $("#rounds").value = params.get("rounds");
   if (params.has("games")) $("#games").value = params.get("games");
-  if (params.has("max_rounds")) $("#maxRounds").value = params.get("max_rounds");
+  // max_rounds=0 is "no cap". A run link from before caps were optional has
+  // no max_rounds at all and meant the old 1M default; keep it so the link
+  // replays the game it promised.
+  if (params.has("max_rounds")) setRoundCap(params.get("max_rounds"));
+  else if (params.get("run") === "1" && !params.has("engine")) setRoundCap(1_000_000);
   if (params.has("seed")) $("#seed").value = params.get("seed");
   if (params.has("names")) $("#nameMode").value = params.get("names");
   if (params.has("strategies")) {

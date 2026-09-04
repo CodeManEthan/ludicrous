@@ -15,7 +15,7 @@ use wasm_bindgen::prelude::*;
 
 pub mod prepared;
 
-pub use prepared::{prepare, WarPrepared};
+pub use prepared::{prepare, WarPrepareJob, WarPrepared};
 
 type Game = WarGame<Xoshiro256ss, NullSink>;
 

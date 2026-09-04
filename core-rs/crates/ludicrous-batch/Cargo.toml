@@ -1,0 +1,12 @@
+[package]
+name = "ludicrous-batch"
+version = "0.1.0"
+edition = "2021"
+description = "lud-batch: native War batch runner the Python server spawns (NDJSON progress + result)"
+
+[[bin]]
+name = "lud-batch"
+path = "src/main.rs"
+
+[dependencies]
+ludicrous-core = { path = "../ludicrous-core" }

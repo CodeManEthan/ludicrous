@@ -8,6 +8,93 @@ let wasm_bindgen = (function(exports) {
     }
 
     /**
+     * The prepare pass as a resumable job, so a worker can report progress and
+     * honor a cancel between steps. `prepare()` below is the one-call form.
+     *
+     * The loop body in `step` is the whole algorithm; `new` is the setup that
+     * used to precede it and `finish` is what used to follow. Splitting it
+     * changes nothing about the output -- `tests/prepared.rs` proves the two
+     * paths byte-identical.
+     */
+    class WarPrepareJob {
+        __destroy_into_raw() {
+            const ptr = this.__wbg_ptr;
+            this.__wbg_ptr = 0;
+            WarPrepareJobFinalization.unregister(this);
+            return ptr;
+        }
+        free() {
+            const ptr = this.__destroy_into_raw();
+            wasm.__wbg_warpreparejob_free(ptr, 0);
+        }
+        /**
+         * @returns {number}
+         */
+        alive() {
+            const ret = wasm.warpreparejob_alive(this.__wbg_ptr);
+            return ret >>> 0;
+        }
+        /**
+         * @returns {boolean}
+         */
+        done() {
+            const ret = wasm.warpreparejob_done(this.__wbg_ptr);
+            return ret !== 0;
+        }
+        /**
+         * Close the pass: final sample, transpose the chart, build the summary
+         * and the playback view. Consumes the job.
+         * @returns {WarPrepared}
+         */
+        finish() {
+            const ptr = this.__destroy_into_raw();
+            const ret = wasm.warpreparejob_finish(ptr);
+            if (ret[2]) {
+                throw takeFromExternrefTable0(ret[1]);
+            }
+            return WarPrepared.__wrap(ret[0]);
+        }
+        /**
+         * `checkpoint_interval` is a hint: pass 0 (or a negative) to let the pass
+         * pick one, which is almost always what you want -- the round count is
+         * not known until the game is over.
+         * @param {number} num_players
+         * @param {number} num_decks
+         * @param {number} seed
+         * @param {number} max_rounds
+         * @param {number} checkpoint_interval
+         */
+        constructor(num_players, num_decks, seed, max_rounds, checkpoint_interval) {
+            const ret = wasm.warpreparejob_new(num_players, num_decks, seed, max_rounds, checkpoint_interval);
+            if (ret[2]) {
+                throw takeFromExternrefTable0(ret[1]);
+            }
+            this.__wbg_ptr = ret[0];
+            WarPrepareJobFinalization.register(this, this.__wbg_ptr, this);
+            return this;
+        }
+        /**
+         * @returns {number}
+         */
+        round() {
+            const ret = wasm.warpreparejob_round(this.__wbg_ptr);
+            return ret >>> 0;
+        }
+        /**
+         * Play up to `budget` more rounds. Returns true once the game is over or
+         * the cap is reached, after which `finish` is the only useful call.
+         * @param {number} budget
+         * @returns {boolean}
+         */
+        step(budget) {
+            const ret = wasm.warpreparejob_step(this.__wbg_ptr, budget);
+            return ret !== 0;
+        }
+    }
+    if (Symbol.dispose) WarPrepareJob.prototype[Symbol.dispose] = WarPrepareJob.prototype.free;
+    exports.WarPrepareJob = WarPrepareJob;
+
+    /**
      * One prepared game: everything the UI needs up front, plus the machinery
      * to reconstruct any single round on demand.
      */
@@ -385,6 +472,9 @@ let wasm_bindgen = (function(exports) {
         };
     }
 
+    const WarPrepareJobFinalization = (typeof FinalizationRegistry === 'undefined')
+        ? { register: () => {}, unregister: () => {} }
+        : new FinalizationRegistry(ptr => wasm.__wbg_warpreparejob_free(ptr, 1));
     const WarPreparedFinalization = (typeof FinalizationRegistry === 'undefined')
         ? { register: () => {}, unregister: () => {} }
         : new FinalizationRegistry(ptr => wasm.__wbg_warprepared_free(ptr, 1));

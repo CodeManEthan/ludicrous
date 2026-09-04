@@ -16,8 +16,11 @@ Run:  python3 server.py  [--port 8000]
 import argparse
 import gzip
 import json
+import math
 import os
 import random
+import subprocess
+import sys
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -38,10 +41,19 @@ ROOT = Path(__file__).parent
 WEB_DIR = ROOT / "web"
 CARDS_DIR = ROOT / "cards"
 
-MAX_PLAYERS = 200
-MAX_DECKS = 200
-DEFAULT_MAX_ROUNDS = 1_000_000  # war safety cap (games stopped here are "unfinished")
-MAX_ROUNDS_CEILING = 20_000_000
+# The Python engine paths (single War games replayed from old links, the
+# batch fallback, all of Blackjack) keep the old limits: Python at 1000
+# players and 1000 decks is hours per request. The native batch runner and
+# the browser engine take the larger caps.
+PY_MAX_PLAYERS = 200
+PY_MAX_DECKS = 200
+MAX_PLAYERS = 1000
+MAX_DECKS = 1000
+DEFAULT_MAX_ROUNDS = 1_000_000  # what a pre-uncapped link meant when it said nothing
+MAX_ROUNDS_CEILING = 20_000_000  # Python-run War games stop here even when asked for no cap
+NATIVE_BATCH = ROOT / "bin" / "lud-batch"
+ROUNDS_GRID = WEB_DIR / "rounds-grid.json"
+BATCH_ROUND_BUDGET = 5_000_000_000  # games x typical rounds; a few seconds native here
 MAX_BJ_ROUNDS = 10_000
 MAX_BATCH_GAMES = 10_000
 FULL_EVENT_BUDGET = 250_000  # events; ~25 MB of JSON is the ceiling for playback mode
@@ -101,10 +113,10 @@ def run_blackjack_simulation(config: dict) -> dict:
     strategies = config.get("strategies") or ["basic"]
     seed = config.get("seed")
     seed = int(seed) if seed not in (None, "") else random.randrange(1_000_000_000)
-    if not 1 <= seats <= MAX_PLAYERS:
-        raise ValueError(f"seats must be between 1 and {MAX_PLAYERS}")
-    if not 1 <= decks <= MAX_DECKS:
-        raise ValueError(f"decks must be between 1 and {MAX_DECKS}")
+    if not 1 <= seats <= PY_MAX_PLAYERS:
+        raise ValueError(f"seats must be between 1 and {PY_MAX_PLAYERS}")
+    if not 1 <= decks <= PY_MAX_DECKS:
+        raise ValueError(f"decks must be between 1 and {PY_MAX_DECKS}")
     if not 1 <= rounds <= MAX_BJ_ROUNDS:
         raise ValueError(f"rounds must be between 1 and {MAX_BJ_ROUNDS}")
 
@@ -151,6 +163,49 @@ def run_blackjack_simulation(config: dict) -> dict:
     return response
 
 
+def requested_max_rounds(config: dict) -> int:
+    """The cap a request asks for: 0 = none. Absent means the old default,
+    so a share link written before caps were optional replays the same game."""
+    raw = config.get("max_rounds")
+    if raw in (None, ""):
+        return DEFAULT_MAX_ROUNDS
+    value = int(raw)
+    if value < 0:
+        raise ValueError("max_rounds must be 0 (no cap) or positive")
+    return value
+
+
+def python_max_rounds(config: dict) -> int:
+    """The cap a Python-run War game actually uses: never unlimited."""
+    value = requested_max_rounds(config)
+    return MAX_ROUNDS_CEILING if value == 0 else min(value, MAX_ROUNDS_CEILING)
+
+
+_grid_cache: dict | None = None
+
+
+def typical_rounds(players: int, decks: int) -> float | None:
+    """Median round count for a War config from web/rounds-grid.json, the
+    same table the page's calculator reads. Nearest cell in log space is
+    plenty for a work budget. None when the grid is missing."""
+    global _grid_cache
+    if _grid_cache is None:
+        try:
+            _grid_cache = json.loads(ROUNDS_GRID.read_text())
+        except (OSError, ValueError):
+            _grid_cache = {}
+    cells = _grid_cache.get("cells")
+    if not cells:
+        return None
+    best, best_d = None, math.inf
+    for key, (median, *_rest) in cells.items():
+        p, d = (int(x) for x in key.split(":"))
+        dist = (math.log(p) - math.log(players)) ** 2 + 4 * (math.log(d) - math.log(decks)) ** 2
+        if dist < best_d:
+            best, best_d = median, dist
+    return best
+
+
 def run_simulation(config: dict) -> dict:
     if config.get("game") == "blackjack":
         return run_blackjack_simulation(config)
@@ -158,13 +213,13 @@ def run_simulation(config: dict) -> dict:
     decks = int(config.get("decks", 1))
     seed = config.get("seed")
     seed = int(seed) if seed not in (None, "") else random.randrange(1_000_000_000)
-    max_rounds = int(config.get("max_rounds") or DEFAULT_MAX_ROUNDS)
-    if not 2 <= players <= MAX_PLAYERS:
-        raise ValueError(f"players must be between 2 and {MAX_PLAYERS}")
-    if not 1 <= decks <= MAX_DECKS:
-        raise ValueError(f"decks must be between 1 and {MAX_DECKS}")
-    if not 1 <= max_rounds <= MAX_ROUNDS_CEILING:
-        raise ValueError(f"max_rounds must be between 1 and {MAX_ROUNDS_CEILING:,}")
+    max_rounds = python_max_rounds(config)
+    if not 2 <= players <= PY_MAX_PLAYERS:
+        raise ValueError(f"the server engine takes 2 to {PY_MAX_PLAYERS} players "
+                         f"(the in-browser engine goes to {MAX_PLAYERS})")
+    if not 1 <= decks <= PY_MAX_DECKS:
+        raise ValueError(f"the server engine takes 1 to {PY_MAX_DECKS} decks "
+                         f"(the in-browser engine goes to {MAX_DECKS})")
 
     names = make_names(players, config.get("names", "default"), random.Random(seed))
     game = WarGame(players, decks, player_names=names, seed=seed)
@@ -225,10 +280,10 @@ def run_batch_api(config: dict, progress=None) -> dict:
         strategies = config.get("strategies") or ["basic"]
         seed = config.get("seed")
         base_seed = int(seed) if seed not in (None, "") else random.randrange(1_000_000)
-        if not 1 <= seats <= MAX_PLAYERS:
-            raise ValueError(f"seats must be between 1 and {MAX_PLAYERS}")
-        if not 1 <= decks <= MAX_DECKS:
-            raise ValueError(f"decks must be between 1 and {MAX_DECKS}")
+        if not 1 <= seats <= PY_MAX_PLAYERS:
+            raise ValueError(f"seats must be between 1 and {PY_MAX_PLAYERS}")
+        if not 1 <= decks <= PY_MAX_DECKS:
+            raise ValueError(f"decks must be between 1 and {PY_MAX_DECKS}")
         if not 1 <= rounds <= MAX_BJ_ROUNDS:
             raise ValueError(f"rounds must be between 1 and {MAX_BJ_ROUNDS}")
         if not 1 <= games <= MAX_BATCH_GAMES:
@@ -255,24 +310,43 @@ def run_batch_api(config: dict, progress=None) -> dict:
     players = int(config.get("players", 4))
     decks = int(config.get("decks", 1))
     games = int(config.get("games", 100))
-    max_rounds = int(config.get("max_rounds") or DEFAULT_MAX_ROUNDS)
     seed = config.get("seed")
     base_seed = int(seed) if seed not in (None, "") else random.randrange(1_000_000)
     if not 2 <= players <= MAX_PLAYERS:
         raise ValueError(f"players must be between 2 and {MAX_PLAYERS}")
     if not 1 <= decks <= MAX_DECKS:
         raise ValueError(f"decks must be between 1 and {MAX_DECKS}")
+    if decks * 52 < players:
+        raise ValueError("not enough cards for that many players")
     if not 1 <= games <= MAX_BATCH_GAMES:
         raise ValueError(f"games must be between 1 and {MAX_BATCH_GAMES}")
-    if not 1 <= max_rounds <= MAX_ROUNDS_CEILING:
-        raise ValueError(f"max_rounds must be between 1 and {MAX_ROUNDS_CEILING:,}")
+    wanted = requested_max_rounds(config)
 
+    typical = typical_rounds(players, decks)
+    if typical is not None:
+        per_game = min(typical, wanted) if wanted else typical
+        if games * per_game > BATCH_ROUND_BUDGET:
+            raise ValueError(
+                f"that batch is about {games * per_game / 1e9:.1f} billion rounds "
+                f"({games:,} games x ~{per_game:,.0f} rounds each); the budget is "
+                f"{BATCH_ROUND_BUDGET / 1e9:.0f} billion. Fewer games or fewer decks.")
+
+    native = native_batch(players, decks, games, base_seed, wanted, progress)
+    if native is not None:
+        return native
+
+    # Python fallback: the binary is missing or would not start.
+    if not 2 <= players <= PY_MAX_PLAYERS or not 1 <= decks <= PY_MAX_DECKS:
+        raise ValueError(f"the native batch runner is unavailable and the Python engine "
+                         f"takes at most {PY_MAX_PLAYERS} players and {PY_MAX_DECKS} decks")
+    max_rounds = MAX_ROUNDS_CEILING if wanted == 0 else min(wanted, MAX_ROUNDS_CEILING)
     start_time = time.perf_counter()
     rows = run_batch(players, decks, games, base_seed=base_seed,
                      max_rounds=max_rounds, progress=progress)
     elapsed = time.perf_counter() - start_time
     return {
         "game": "war",
+        "engine": "v1",
         "config": {
             "players": players,
             "decks": decks,
@@ -285,6 +359,63 @@ def run_batch_api(config: dict, progress=None) -> dict:
         "aggregate": summarize_batch(rows),
         "games": rows,
     }
+
+
+_native_warned = False
+
+
+def native_batch(players, decks, games, base_seed, max_rounds, progress) -> dict | None:
+    """Run the batch on bin/lud-batch (the Rust core, all cores, v2 seeds).
+
+    None only when the binary cannot be started -- then the caller falls back
+    to Python. A crash or a bad exit mid-run is an error to the client, never
+    a silent rerun. Progress lines are forwarded to `progress`; if it returns
+    False (the client is gone) the child is killed.
+    """
+    global _native_warned
+    if not NATIVE_BATCH.is_file() or not os.access(NATIVE_BATCH, os.X_OK):
+        if not _native_warned:
+            _native_warned = True
+            print(f"[ludicrous] {NATIVE_BATCH} not found; War batches run in Python", file=sys.stderr)
+        return None
+    argv = [str(NATIVE_BATCH), "--players", str(players), "--decks", str(decks),
+            "--games", str(games), "--seed", str(base_seed), "--max-rounds", str(max_rounds)]
+    try:
+        child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except OSError as error:
+        if not _native_warned:
+            _native_warned = True
+            print(f"[ludicrous] could not start {NATIVE_BATCH}: {error}; War batches run in Python",
+                  file=sys.stderr)
+        return None
+
+    result = None
+    error = None
+    try:
+        for line in child.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            msg = json.loads(line)
+            if "progress" in msg:
+                if progress is not None and progress(msg["progress"]["done"], msg["progress"]["total"]) is False:
+                    child.kill()
+                    break
+            elif "result" in msg:
+                result = msg["result"]
+            elif "error" in msg:
+                error = msg["error"]
+    finally:
+        try:
+            _out, err = child.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            _out, err = child.communicate()
+    if error is not None:
+        raise ValueError(error)
+    if result is None:
+        raise RuntimeError(f"native batch runner exited with {child.returncode}: {err.strip()[:300]}")
+    return result
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -325,7 +456,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         write_lock = threading.Lock()
-        throttle = {"at": 0.0}
+        throttle = {"at": 0.0, "gone": False}
 
         def send_line(payload: dict) -> None:
             data = json.dumps(payload).encode() + b"\n"
@@ -338,14 +469,18 @@ class Handler(SimpleHTTPRequestHandler):
             # batch doesn't spend its time writing to the socket, and
             # never raises — a gone client must not poison the pool
             # (the computation is shared and finishes regardless).
+            if throttle["gone"]:
+                return False
             now = time.perf_counter()
             if done < total and now - throttle["at"] < 0.1:
-                return
+                return True
             throttle["at"] = now
             try:
                 send_line({"progress": {"done": done, "total": total}})
             except OSError:
-                pass
+                throttle["gone"] = True  # the native runner stops; the pool finishes on its own
+                return False
+            return True
 
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
@@ -354,7 +489,7 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             result = run_batch_api(config, progress=progress)
             send_line({"result": result})
-        except (ValueError, TypeError, KeyError) as error:
+        except (ValueError, TypeError, KeyError, RuntimeError) as error:
             try:
                 send_line({"error": str(error)})
             except OSError:

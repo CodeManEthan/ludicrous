@@ -418,6 +418,205 @@ impl WarPrepared {
     }
 }
 
+/// The prepare pass as a resumable job, so a worker can report progress and
+/// honor a cancel between steps. `prepare()` below is the one-call form.
+///
+/// The loop body in `step` is the whole algorithm; `new` is the setup that
+/// used to precede it and `finish` is what used to follow. Splitting it
+/// changes nothing about the output -- `tests/prepared.rs` proves the two
+/// paths byte-identical.
+#[wasm_bindgen]
+pub struct WarPrepareJob {
+    g: WarGame<Xoshiro256ss, NullSink>,
+    max_rounds: u64,
+    np: usize,
+
+    sample_rounds: Vec<u32>,
+    rows: Vec<i32>,
+    sample_interval: u32,
+    counts: Vec<u32>,
+    round_out: Vec<i32>,
+    initial_counts: Vec<u32>,
+
+    ck_budget: usize,
+    ck_interval: u32,
+    ck_off: Vec<u32>,
+    ck_data: Vec<u8>,
+    ck_rounds: Vec<u32>,
+
+    elim_rounds: Vec<u32>,
+    elim_players: Vec<u32>,
+    alive: u32,
+}
+
+#[wasm_bindgen]
+impl WarPrepareJob {
+    /// `checkpoint_interval` is a hint: pass 0 (or a negative) to let the pass
+    /// pick one, which is almost always what you want -- the round count is
+    /// not known until the game is over.
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        num_players: u32,
+        num_decks: u32,
+        seed: f64,
+        max_rounds: f64,
+        checkpoint_interval: f64,
+    ) -> Result<WarPrepareJob, JsError> {
+        let cfg = config(num_players, num_decks, max_rounds);
+        cfg.validate().map_err(JsError::new)?;
+        let seed = seed as u64;
+        let np = num_players as usize;
+
+        let mut g: WarGame<Xoshiro256ss, NullSink> =
+            WarGame::new(cfg, Xoshiro256ss::from_seed(seed), seed);
+        g.start();
+
+        let mut job = WarPrepareJob {
+            g,
+            max_rounds: cfg.max_rounds,
+            np,
+            sample_rounds: Vec::with_capacity(SAMPLE_CAP + 1),
+            rows: Vec::with_capacity((SAMPLE_CAP + 1) * np),
+            sample_interval: 1,
+            counts: Vec::with_capacity(np),
+            round_out: Vec::with_capacity(np),
+            initial_counts: Vec::new(),
+            ck_budget: 0,
+            ck_interval: if checkpoint_interval >= 1.0 {
+                checkpoint_interval as u32
+            } else {
+                1
+            },
+            ck_off: Vec::new(),
+            ck_data: Vec::new(),
+            ck_rounds: vec![0],
+            elim_rounds: Vec::new(),
+            elim_players: Vec::new(),
+            alive: 0,
+        };
+
+        job.sample(0);
+        job.initial_counts = job.counts.clone();
+
+        let first = job.g.save();
+        job.ck_budget = (CK_BYTE_BUDGET / first.len().max(1)).clamp(CK_MIN, CK_MAX);
+        job.ck_off = vec![0, first.len() as u32];
+        job.ck_data = first;
+        job.alive = job.g.alive();
+        Ok(job)
+    }
+
+    /// Play up to `budget` more rounds. Returns true once the game is over or
+    /// the cap is reached, after which `finish` is the only useful call.
+    pub fn step(&mut self, budget: u32) -> bool {
+        let mut left = budget;
+        while left > 0 && !self.g.is_over() && (self.g.round() as u64) < self.max_rounds {
+            self.g.play_round();
+            left -= 1;
+            let r = self.g.round();
+
+            if self.g.alive() != self.alive {
+                self.alive = self.g.alive();
+                self.g.round_out_into(&mut self.round_out);
+                for p in 0..self.np {
+                    if self.round_out[p] == r as i32 {
+                        self.elim_rounds.push(r);
+                        self.elim_players.push(p as u32 + 1);
+                    }
+                }
+            }
+
+            if r % self.sample_interval == 0 {
+                self.sample(r);
+                if self.sample_rounds.len() > SAMPLE_CAP - 1 {
+                    halve_rows(&mut self.sample_rounds, &mut self.rows, self.np);
+                    self.sample_interval *= 2;
+                }
+            }
+
+            if r % self.ck_interval == 0 {
+                let blob = self.g.save();
+                self.ck_data.extend_from_slice(&blob);
+                self.ck_off.push(self.ck_data.len() as u32);
+                self.ck_rounds.push(r);
+                if self.ck_rounds.len() > self.ck_budget {
+                    halve_checkpoints(&mut self.ck_rounds, &mut self.ck_data, &mut self.ck_off);
+                    self.ck_interval = self.ck_interval.saturating_mul(2);
+                }
+            }
+        }
+        self.done()
+    }
+
+    pub fn done(&self) -> bool {
+        self.g.is_over() || (self.g.round() as u64) >= self.max_rounds
+    }
+
+    pub fn round(&self) -> u32 {
+        self.g.round()
+    }
+
+    pub fn alive(&self) -> u32 {
+        self.g.alive()
+    }
+
+    /// Close the pass: final sample, transpose the chart, build the summary
+    /// and the playback view. Consumes the job.
+    pub fn finish(mut self) -> Result<WarPrepared, JsError> {
+        let rounds = self.g.round();
+        if self.sample_rounds.last() != Some(&rounds) {
+            self.sample(rounds);
+        }
+        let np = self.np;
+
+        // ---- transpose to player-major so JS can slice one player's line
+        let ns = self.sample_rounds.len();
+        let mut series = vec![0i32; np * ns];
+        for s in 0..ns {
+            for p in 0..np {
+                series[p * ns + s] = self.rows[s * np + p];
+            }
+        }
+
+        let summary = self.g.summary();
+        let view = WarGame::restore(&self.ck_data[..self.ck_off[1] as usize], RoundSink::new(np))
+            .map_err(|e| JsError::new(&format!("bad checkpoint: {:?}", e)))?;
+
+        Ok(WarPrepared {
+            num_players: np,
+            rounds,
+            summary: summary_json(&summary),
+            standings: summary.standings.clone(),
+            sample_rounds: self.sample_rounds,
+            series,
+            initial_counts: self.initial_counts,
+            elim_rounds: self.elim_rounds,
+            elim_players: self.elim_players,
+            ck_data: self.ck_data,
+            ck_off: self.ck_off,
+            ck_rounds: self.ck_rounds,
+            ck_interval: self.ck_interval,
+            view,
+        })
+    }
+}
+
+impl WarPrepareJob {
+    fn sample(&mut self, r: u32) {
+        self.g.card_counts_into(&mut self.counts);
+        self.g.round_out_into(&mut self.round_out);
+        self.sample_rounds.push(r);
+        for p in 0..self.np {
+            let out = self.round_out[p];
+            self.rows.push(if out >= 0 && (out as u32) < r {
+                -1
+            } else {
+                self.counts[p] as i32
+            });
+        }
+    }
+}
+
 /// Run a whole game once and keep what playback needs.
 ///
 /// `checkpoint_interval` is a hint: pass 0 (or a negative) to let the pass
@@ -431,125 +630,7 @@ pub fn prepare(
     max_rounds: f64,
     checkpoint_interval: f64,
 ) -> Result<WarPrepared, JsError> {
-    let cfg = config(num_players, num_decks, max_rounds);
-    cfg.validate().map_err(JsError::new)?;
-    let seed = seed as u64;
-    let np = num_players as usize;
-
-    let mut g: WarGame<Xoshiro256ss, NullSink> =
-        WarGame::new(cfg, Xoshiro256ss::from_seed(seed), seed);
-    g.start();
-
-    // ---- chart samples, sample-major while we build them
-    let mut sample_rounds: Vec<u32> = Vec::with_capacity(SAMPLE_CAP + 1);
-    let mut rows: Vec<i32> = Vec::with_capacity((SAMPLE_CAP + 1) * np);
-    let mut sample_interval: u32 = 1;
-    let mut counts: Vec<u32> = Vec::with_capacity(np);
-    let mut round_out: Vec<i32> = Vec::with_capacity(np);
-
-    macro_rules! sample {
-        ($r:expr) => {{
-            let r = $r;
-            g.card_counts_into(&mut counts);
-            g.round_out_into(&mut round_out);
-            sample_rounds.push(r);
-            for p in 0..np {
-                let out = round_out[p];
-                rows.push(if out >= 0 && (out as u32) < r {
-                    -1
-                } else {
-                    counts[p] as i32
-                });
-            }
-        }};
-    }
-
-    sample!(0);
-    let initial_counts = counts.clone();
-
-    // ---- checkpoints
-    let first = g.save();
-    let ck_budget = (CK_BYTE_BUDGET / first.len().max(1)).clamp(CK_MIN, CK_MAX);
-    let mut ck_interval: u32 = if checkpoint_interval >= 1.0 {
-        checkpoint_interval as u32
-    } else {
-        1
-    };
-    let mut ck_off: Vec<u32> = vec![0, first.len() as u32];
-    let mut ck_data = first;
-    let mut ck_rounds: Vec<u32> = vec![0];
-
-    let mut elim_rounds: Vec<u32> = Vec::new();
-    let mut elim_players: Vec<u32> = Vec::new();
-    let mut alive = g.alive();
-
-    while !g.is_over() && (g.round() as u64) < cfg.max_rounds {
-        g.play_round();
-        let r = g.round();
-
-        if g.alive() != alive {
-            alive = g.alive();
-            g.round_out_into(&mut round_out);
-            for p in 0..np {
-                if round_out[p] == r as i32 {
-                    elim_rounds.push(r);
-                    elim_players.push(p as u32 + 1);
-                }
-            }
-        }
-
-        if r % sample_interval == 0 {
-            sample!(r);
-            if sample_rounds.len() > SAMPLE_CAP - 1 {
-                halve_rows(&mut sample_rounds, &mut rows, np);
-                sample_interval *= 2;
-            }
-        }
-
-        if r % ck_interval == 0 {
-            let blob = g.save();
-            ck_data.extend_from_slice(&blob);
-            ck_off.push(ck_data.len() as u32);
-            ck_rounds.push(r);
-            if ck_rounds.len() > ck_budget {
-                halve_checkpoints(&mut ck_rounds, &mut ck_data, &mut ck_off);
-                ck_interval = ck_interval.saturating_mul(2);
-            }
-        }
-    }
-
-    let rounds = g.round();
-    if sample_rounds.last() != Some(&rounds) {
-        sample!(rounds);
-    }
-
-    // ---- transpose to player-major so JS can slice one player's line
-    let ns = sample_rounds.len();
-    let mut series = vec![0i32; np * ns];
-    for s in 0..ns {
-        for p in 0..np {
-            series[p * ns + s] = rows[s * np + p];
-        }
-    }
-
-    let summary = g.summary();
-    let view = WarGame::restore(&ck_data[..ck_off[1] as usize], RoundSink::new(np))
-        .map_err(|e| JsError::new(&format!("bad checkpoint: {:?}", e)))?;
-
-    Ok(WarPrepared {
-        num_players: np,
-        rounds,
-        summary: summary_json(&summary),
-        standings: summary.standings.clone(),
-        sample_rounds,
-        series,
-        initial_counts,
-        elim_rounds,
-        elim_players,
-        ck_data,
-        ck_off,
-        ck_rounds,
-        ck_interval,
-        view,
-    })
+    let mut job = WarPrepareJob::new(num_players, num_decks, seed, max_rounds, checkpoint_interval)?;
+    while !job.step(u32::MAX) {}
+    job.finish()
 }
