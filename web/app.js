@@ -96,13 +96,27 @@ function saveLayoutPrefs() {
   catch { /* per-viewer convenience only */ }
 }
 
+// Phone-width viewports get the compact layout (see the media query in
+// style.css) and start a crowded table folded. Same breakpoint as the CSS.
+const narrowScreen = window.matchMedia("(max-width: 640px)");
+const PHONE_FOLD_PLAYERS = 24;
+
+function tableCollapsed() {
+  if (layoutPrefs.tableCollapsed != null) return !!layoutPrefs.tableCollapsed;
+  return narrowScreen.matches && !!state && state.summary.num_players > PHONE_FOLD_PLAYERS;
+}
+
 function applyLayoutPrefs() {
-  $("#results").classList.toggle("chart-first", !!layoutPrefs.chartFirst);
-  $("#chartTopChk").checked = !!layoutPrefs.chartFirst;
+  // Chart above the cards unless the viewer turned it off: on a phone a big
+  // table is a wall of tiles, and the chart is what you scroll to see.
+  const chartFirst = layoutPrefs.chartFirst !== false;
+  $("#results").classList.toggle("chart-first", chartFirst);
+  $("#chartTopChk").checked = chartFirst;
   $("#slowOpening").checked = layoutPrefs.slowOpening !== false;
-  $("#table").classList.toggle("collapsed", !!layoutPrefs.tableCollapsed);
-  $("#collapseBtn").textContent = layoutPrefs.tableCollapsed ? "+" : "−";
-  $("#collapseBtn").title = layoutPrefs.tableCollapsed ? "Expand the cards" : "Collapse the cards";
+  const collapsed = tableCollapsed();
+  $("#table").classList.toggle("collapsed", collapsed);
+  $("#collapseBtn").textContent = collapsed ? "+" : "−";
+  $("#collapseBtn").title = collapsed ? "Expand the cards" : "Collapse the cards";
   const elim = layoutPrefs.elimDisplay || "strip";
   if ($("#elimDisplay").value !== elim) $("#elimDisplay").value = elim;
 }
@@ -754,11 +768,28 @@ function buildIndex(events, rounds) {
   };
 }
 
-function downsampleCounts(countsSeries, totalRounds) {
+// Chart sample rounds: CHART_POINTS uniform samples across the game, plus a
+// dense opening — every round through CHART_DENSE_ROUNDS, then 2% steps until
+// the uniform series is at least that fine. The opening of a big game is a
+// few hundred rounds that playback spends real seconds on, and a uniform
+// series puts them all in one pixel. Mirrored in server.py
+// (chart_sample_rounds) and the wasm prepare pass (prepared.rs).
+const CHART_DENSE_ROUNDS = 200;
+const CHART_GEO_DIVISOR = 50;
+
+function chartSampleRounds(totalRounds) {
   const samples = Math.min(totalRounds, CHART_POINTS);
   const sampleSet = new Set();
   for (let i = 0; i <= samples; i++) sampleSet.add(Math.round((i * totalRounds) / samples));
-  const rounds = [...sampleSet].sort((a, b) => a - b);
+  for (let r = 0; r < totalRounds;) {
+    r = r < CHART_DENSE_ROUNDS ? r + 1 : r + Math.max(1, Math.floor(r / CHART_GEO_DIVISOR));
+    sampleSet.add(Math.min(r, totalRounds));
+  }
+  return [...sampleSet].sort((a, b) => a - b);
+}
+
+function downsampleCounts(countsSeries, totalRounds) {
+  const rounds = chartSampleRounds(totalRounds);
   const series = {};
   for (const [pid, counts] of Object.entries(countsSeries)) {
     series[pid] = rounds.map((r) => (r < counts.length ? counts[r] : null));
@@ -780,6 +811,7 @@ function prepare(data) {
   };
   if (data.mode === "full") {
     Object.assign(s, buildIndex(data.events, s.rounds));
+    s.chartPrefixMax = null;
     s.names = s.names || s.namesFromEvents || {};
     s.stats = s.stats || { ...s.computedStats, total_cards: data.summary.num_decks * 52 };
     s.chartData = downsampleCounts(s.countsSeries, s.rounds);
@@ -938,6 +970,7 @@ function activate() {
 
   renderStats();
   renderLegend();
+  applyLayoutPrefs();
   drawChart();
   updateSpeedLabels();
 
@@ -1676,27 +1709,68 @@ function setupCanvas(canvas) {
   return [ctx, rect.width, rect.height];
 }
 
+// Index of the first chart sample at or past `round`.
+function sampleIndexAt(xs, round) {
+  let lo = 0, hi = xs.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (xs[mid] < round) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+// Round a value up to the next 5% step, so an axis that follows the playhead
+// moves in a couple of hundred jumps per game instead of one per frame (the
+// field layer is redrawn whenever the axes move).
+function snapUp(v) {
+  return Math.ceil(Math.pow(1.05, Math.ceil(Math.log(Math.max(v, 1)) / Math.log(1.05))));
+}
+
+// Largest card count held by anyone at or before sample i, for every i, so
+// the live y-axis can read "the biggest stack so far" in O(1) per frame.
+function chartPrefixMax() {
+  if (state.chartPrefixMax) return state.chartPrefixMax;
+  const { rounds: xs, series } = state.chartData;
+  const out = new Float64Array(xs.length);
+  for (const values of Object.values(series)) {
+    for (let i = 0; i < xs.length; i++) {
+      const v = values[i];
+      if (v == null) break;
+      if (v > out[i]) out[i] = v;
+    }
+  }
+  for (let i = 1; i < out.length; i++) if (out[i - 1] > out[i]) out[i] = out[i - 1];
+  return (state.chartPrefixMax = out);
+}
+
+const MIN_VISIBLE_SAMPLES = 12;
+
 function drawChart() {
   const [ctx, width, height] = setupCanvas($("#chart"));
   const { rounds: xs, series } = state.chartData;
   // Suspense on a big game: against a fixed full-game axis the reveal edge
   // moves invisibly (round 400 of 300,000 is half a pixel). So while the
-  // outcome is hidden, the axis spans only the revealed portion and grows
-  // with the playhead — a live feed — then snaps to the full game on reveal.
-  // The floor of ~20 samples keeps the early window from being too sparse
-  // to draw (the series is downsampled to ≤1200 points across the game).
+  // outcome is hidden, both axes span only the revealed portion and grow
+  // with the playhead — a live feed — then snap to the full game on reveal.
+  // The x window keeps at least MIN_VISIBLE_SAMPLES samples on screen; the
+  // samples are dense through the opening (chartSampleRounds), so early in
+  // the game that floor is a dozen rounds, not a hundred thousand.
   let xMax = Math.max(state.rounds, 1);
-  if (state.suspense && state.mode === "full") {
-    const sampleGap = xs.length > 1 ? xs[xs.length - 1] / (xs.length - 1) : 1;
-    xMax = Math.min(
-      Math.max(state.rounds, 1),
-      Math.ceil(Math.max(pos * 1.25, sampleGap * 20, 50)));
-    // Snap to 5% steps so the field layer is not redrawn every frame.
-    if (xMax < state.rounds) {
-      xMax = Math.min(state.rounds, Math.ceil(Math.pow(1.05, Math.ceil(Math.log(xMax) / Math.log(1.05)))));
+  let { yMin, yMax } = state.chartRange;
+  const live = state.suspense && state.mode === "full";
+  if (live) {
+    const at = sampleIndexAt(xs, pos);
+    const floorX = xs[Math.min(at + MIN_VISIBLE_SAMPLES, xs.length - 1)];
+    xMax = Math.min(Math.max(state.rounds, 1), snapUp(Math.max(pos * 1.25, floorX, MIN_VISIBLE_SAMPLES)));
+    if (state.game === "war") {
+      // With 200 players every line starts at 1/200 of the shoe; against a
+      // full-shoe axis the opening is a flat smear along the bottom. So the
+      // y-axis starts at a few opening stacks and rises with the leader.
+      const biggest = chartPrefixMax()[Math.min(at, xs.length - 1)];
+      const start = Math.max(...Object.values(state.initialCounts || { a: 1 })) * 2.5;
+      yMax = Math.min(state.chartRange.yMax, snapUp(Math.max(biggest * 1.15, start, 10)));
     }
   }
-  const { yMin, yMax } = state.chartRange;
   const pad = { left: 46, right: 12, top: 8, bottom: 22 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
@@ -1757,8 +1831,15 @@ function drawChart() {
 
   const top = topSeries();
   const topIds = new Set(top.map((t) => String(t.pid)));
+  // Clip to the plot: on the live axes a future value can sit above yMax or
+  // past xMax, and the suspense mask only covers the plot itself.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(pad.left, pad.top - 2, plotW + pad.right, plotH + 4);
+  ctx.clip();
   drawField(ctx, width, height, xMax, series, topIds, x, y, xs);
   for (let i = top.length - 1; i >= 0; i--) drawSeries(String(top[i].pid), top[i].color, 2);
+  ctx.restore();
   drawOverlay();
 }
 
@@ -2312,7 +2393,7 @@ document.addEventListener("click", (event) => {
   }
 });
 $("#collapseBtn").addEventListener("click", () => {
-  layoutPrefs.tableCollapsed = !layoutPrefs.tableCollapsed;
+  layoutPrefs.tableCollapsed = !tableCollapsed();
   saveLayoutPrefs();
   applyLayoutPrefs();
 });

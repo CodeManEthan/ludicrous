@@ -120,8 +120,14 @@ fn chart_and_checkpoints_stay_bounded() {
     // 40p/20d runs long enough to trigger both halving paths.
     let p = prepare(40, 20, 2.0, 1_000_000.0, 0.0).unwrap();
     let xs = p.chart_rounds();
-    assert!(xs.len() <= 1200, "{} chart points", xs.len());
+    // 1200 uniform + 200 dense opening + a 2% bridge to the end of the game
+    let bridge = ((p.rounds().max(200) as f64 / 200.0).ln() / 1.02f64.ln()).ceil() as usize + 2;
+    assert!(xs.len() <= 1200 + 200 + bridge, "{} chart points", xs.len());
     assert_eq!(xs[0], 0);
+    // The opening is at full resolution: every round through 200 is a sample.
+    for r in 0..=200u32.min(p.rounds()) {
+        assert!(xs.binary_search(&r).is_ok(), "round {r} missing from the dense opening");
+    }
     assert_eq!(*xs.last().unwrap(), p.rounds());
     assert!(xs.windows(2).all(|w| w[0] < w[1]), "chart rounds not sorted");
     assert_eq!(p.chart_series().len(), xs.len() * 40);

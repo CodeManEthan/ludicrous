@@ -4,9 +4,12 @@
 //! playback state is *checkpoints plus resimulation* -- never an event log.
 //! `prepare()` runs the game once and keeps three small things:
 //!
-//! * a downsampled chart series (<= `SAMPLE_CAP` points per player) built by
-//!   halving the sample interval whenever the buffer fills, so one pass
-//!   produces a uniform series without knowing the round count up front;
+//! * a downsampled chart series built by halving the sample interval
+//!   whenever the buffer fills (<= `SAMPLE_CAP` uniform points per player),
+//!   so one pass produces a uniform series without knowing the round count
+//!   up front -- plus a dense opening (every round up to `DENSE_ROUNDS`,
+//!   then a 2% geometric bridge) so a chart zoomed to the first seconds of
+//!   a million-round game still has something to draw;
 //! * the same halving trick over checkpoint blobs, sized so the whole set
 //!   stays inside `CK_BYTE_BUDGET`;
 //! * summary, standings and the elimination timeline.
@@ -24,8 +27,16 @@ use wasm_bindgen::prelude::*;
 
 use crate::{config, summary_json};
 
-/// Chart points handed to JS. The UI downsamples nothing further.
+/// Uniform chart points handed to JS. The UI downsamples nothing further.
 const SAMPLE_CAP: usize = 1200;
+/// Every round up to here is a chart sample: the opening of a big game is a
+/// few hundred rounds that playback spends real seconds on, and the uniform
+/// series would put them all in one pixel. Mirrored in `web/app.js`
+/// (`chartSampleRounds`) and `server.py` (`chart_sample_rounds`).
+const DENSE_ROUNDS: u32 = 200;
+/// Past the dense opening, sample every `r / GEO_DIVISOR` rounds (a 2%
+/// geometric bridge) until the uniform series is at least that fine.
+const GEO_DIVISOR: u32 = 50;
 /// Ceiling on the whole checkpoint set. A 100p/50d blob is ~3.8 KB, so this
 /// buys ~1000 checkpoints there and fewer for a fatter shoe.
 const CK_BYTE_BUDGET: usize = 4 << 20;
@@ -434,6 +445,11 @@ pub struct WarPrepareJob {
     sample_rounds: Vec<u32>,
     rows: Vec<i32>,
     sample_interval: u32,
+    /// The dense opening + geometric bridge, kept apart from the uniform
+    /// series because halving must never thin them. Merged in `finish`.
+    open_rounds: Vec<u32>,
+    open_rows: Vec<i32>,
+    next_open: u32,
     counts: Vec<u32>,
     round_out: Vec<i32>,
     initial_counts: Vec<u32>,
@@ -478,6 +494,9 @@ impl WarPrepareJob {
             sample_rounds: Vec::with_capacity(SAMPLE_CAP + 1),
             rows: Vec::with_capacity((SAMPLE_CAP + 1) * np),
             sample_interval: 1,
+            open_rounds: Vec::new(),
+            open_rows: Vec::new(),
+            next_open: 1,
             counts: Vec::with_capacity(np),
             round_out: Vec::with_capacity(np),
             initial_counts: Vec::new(),
@@ -533,6 +552,10 @@ impl WarPrepareJob {
                     self.sample_interval *= 2;
                 }
             }
+            if r == self.next_open {
+                self.sample_open(r);
+                self.next_open = next_open_round(r);
+            }
 
             if r % self.ck_interval == 0 {
                 let blob = self.g.save();
@@ -569,12 +592,18 @@ impl WarPrepareJob {
         }
         let np = self.np;
 
+        // ---- merge the dense opening into the uniform series (sorted, no
+        // duplicate rounds; both buffers hold the same numbers for a round)
+        let (sample_rounds, rows) = merge_samples(
+            &self.sample_rounds, &self.rows, &self.open_rounds, &self.open_rows, np,
+        );
+
         // ---- transpose to player-major so JS can slice one player's line
-        let ns = self.sample_rounds.len();
+        let ns = sample_rounds.len();
         let mut series = vec![0i32; np * ns];
         for s in 0..ns {
             for p in 0..np {
-                series[p * ns + s] = self.rows[s * np + p];
+                series[p * ns + s] = rows[s * np + p];
             }
         }
 
@@ -587,7 +616,7 @@ impl WarPrepareJob {
             rounds,
             summary: summary_json(&summary),
             standings: summary.standings.clone(),
-            sample_rounds: self.sample_rounds,
+            sample_rounds,
             series,
             initial_counts: self.initial_counts,
             elim_rounds: self.elim_rounds,
@@ -606,15 +635,56 @@ impl WarPrepareJob {
         self.g.card_counts_into(&mut self.counts);
         self.g.round_out_into(&mut self.round_out);
         self.sample_rounds.push(r);
-        for p in 0..self.np {
-            let out = self.round_out[p];
-            self.rows.push(if out >= 0 && (out as u32) < r {
-                -1
-            } else {
-                self.counts[p] as i32
-            });
-        }
+        push_row(&mut self.rows, &self.counts, &self.round_out, r);
     }
+
+    fn sample_open(&mut self, r: u32) {
+        self.g.card_counts_into(&mut self.counts);
+        self.g.round_out_into(&mut self.round_out);
+        self.open_rounds.push(r);
+        push_row(&mut self.open_rows, &self.counts, &self.round_out, r);
+    }
+}
+
+fn push_row(rows: &mut Vec<i32>, counts: &[u32], round_out: &[i32], r: u32) {
+    for (p, &c) in counts.iter().enumerate() {
+        let out = round_out[p];
+        rows.push(if out >= 0 && (out as u32) < r { -1 } else { c as i32 });
+    }
+}
+
+/// The opening schedule: every round through `DENSE_ROUNDS`, then 2% steps.
+/// Integer arithmetic on purpose, so wasm and native agree to the round.
+fn next_open_round(r: u32) -> u32 {
+    if r < DENSE_ROUNDS {
+        r + 1
+    } else {
+        r + (r / GEO_DIVISOR).max(1)
+    }
+}
+
+/// Merge two round-major sample sets into one sorted, de-duplicated set.
+fn merge_samples(
+    a_rounds: &[u32], a_rows: &[i32], b_rounds: &[u32], b_rows: &[i32], np: usize,
+) -> (Vec<u32>, Vec<i32>) {
+    let mut rounds = Vec::with_capacity(a_rounds.len() + b_rounds.len());
+    let mut rows = Vec::with_capacity((a_rounds.len() + b_rounds.len()) * np);
+    let (mut i, mut j) = (0, 0);
+    while i < a_rounds.len() || j < b_rounds.len() {
+        let take_a = j >= b_rounds.len() || (i < a_rounds.len() && a_rounds[i] <= b_rounds[j]);
+        let (r, src) = if take_a {
+            (a_rounds[i], &a_rows[i * np..(i + 1) * np])
+        } else {
+            (b_rounds[j], &b_rows[j * np..(j + 1) * np])
+        };
+        if take_a { i += 1 } else { j += 1 }
+        if rounds.last() == Some(&r) {
+            continue;
+        }
+        rounds.push(r);
+        rows.extend_from_slice(src);
+    }
+    (rounds, rows)
 }
 
 /// Run a whole game once and keep what playback needs.

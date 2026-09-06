@@ -91,14 +91,33 @@ def make_names(num_players: int, mode: str, rng: random.Random) -> list[str] | N
     ]
 
 
+# Every round through here is a chart sample, then 2% steps until the uniform
+# series is at least that fine. The opening of a big game is a few hundred
+# rounds that playback spends real seconds on, and a uniform series puts them
+# all in one pixel. Mirrored in web/app.js (chartSampleRounds) and the wasm
+# prepare pass (DENSE_ROUNDS / GEO_DIVISOR in prepared.rs).
+CHART_DENSE_ROUNDS = 200
+CHART_GEO_DIVISOR = 50
+
+
+def chart_sample_rounds(total_rounds: int) -> list[int]:
+    num_samples = min(total_rounds, CHART_POINTS)
+    rounds = {round(i * total_rounds / num_samples) for i in range(num_samples + 1)}
+    r = 0
+    while r < total_rounds:
+        r = r + 1 if r < CHART_DENSE_ROUNDS else r + max(1, r // CHART_GEO_DIVISOR)
+        rounds.add(min(r, total_rounds))
+    return sorted(rounds)
+
+
 def build_chart(counts_series: dict[int, list[int]], total_rounds: int) -> dict:
-    """Downsample per-round card counts to <= CHART_POINTS samples per player.
+    """Downsample per-round card counts to CHART_POINTS uniform samples per
+    player plus a dense opening (see chart_sample_rounds).
 
     counts_series[pid][r] is the player's count after round r (index 0 = deal);
     the list simply ends once the player is eliminated.
     """
-    num_samples = min(total_rounds, CHART_POINTS)
-    sample_rounds = sorted({round(i * total_rounds / num_samples) for i in range(num_samples + 1)})
+    sample_rounds = chart_sample_rounds(total_rounds)
     series = {
         pid: [counts[r] if r < len(counts) else None for r in sample_rounds]
         for pid, counts in counts_series.items()

@@ -284,6 +284,7 @@ details.opt-box[open] > summary { background: #2c2c2a; }
 .banner {
   margin-top: 10px;
   font-size: 15px;
+  line-height: 22px;
   color: var(--ink-2);
   min-height: 22px;
 }
@@ -615,3 +616,41 @@ details.opt-box[open] > summary { background: #2c2c2a; }
 #skipBtn { margin-left: auto; }
 #pauseNote { color: var(--muted); font-size: 12px; }
 .tile .value.masked { color: var(--muted); }
+
+/* --- phones ---------------------------------------------------------
+   The first mobile layout this app has had. Two rules matter most: nothing
+   that changes every round may change height (the round banner is clamped
+   to two lines, so the chart and table below it hold still), and a crowded
+   table gets small tiles so a phone shows six or seven players per row
+   instead of three. The same 640px breakpoint is read in app.js. */
+@media (max-width: 640px) {
+  header { padding: 10px 12px; gap: 10px; }
+  h1 { font-size: 17px; }
+  h1 span { display: none; }
+  main { padding: 10px 12px 32px; gap: 10px; }
+  .panel { padding: 10px 12px; border-radius: 10px; }
+  .stat-row { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 6px; }
+  .tile { padding: 8px 10px; }
+  .tile .value { font-size: 18px; }
+
+  .banner {
+    height: 44px;              /* exactly two lines; a long round is clipped, not stacked */
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    font-size: 14px;
+  }
+  .round-label { min-width: 0; }
+  .controls .speed { font-size: 11px; }
+
+  .grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px 4px; }
+  .grid.bj { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .player .pname, .player .pmeta { font-size: 10px; }
+  .player img { margin: 2px auto 1px; border-radius: 3px; }
+  .out-strip { max-height: 96px; }
+
+  #chartWrap { height: 220px; }
+  .legend { gap: 4px 10px; font-size: 11px; }
+  .elim-feed { max-height: 200px; padding-left: 32px; }
+}
