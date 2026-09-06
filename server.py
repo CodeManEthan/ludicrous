@@ -449,6 +449,20 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB_DIR), **kwargs)
 
+    def end_headers(self):
+        # Static files: revalidate on every visit. Without a Cache-Control
+        # header browsers cache heuristically (a tenth of the file's age),
+        # so a deploy could show up hours late. The built-in handler sends
+        # Last-Modified and answers If-Modified-Since with a 304, so the
+        # revalidation is one small round trip. Card art never changes and
+        # is dozens of files, so it may sit in the cache for a day.
+        if self.command in ("GET", "HEAD") and not self.path.startswith("/api/"):
+            if self.path.startswith("/cards/"):
+                self.send_header("Cache-Control", "public, max-age=86400")
+            else:
+                self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def translate_path(self, path):
         clean = path.split("?", 1)[0].split("#", 1)[0]
         if clean.startswith("/cards/"):
