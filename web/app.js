@@ -3,7 +3,14 @@
 
 const $ = (sel) => document.querySelector(sel);
 const fmt = new Intl.NumberFormat("en-US");
-const PALETTE = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181"];
+// Ten hues that hold apart on the dark panel: the five validated in the
+// dataviz pass, then five more. Highlight index k gets hue k % 10; from k = 10
+// the same hue comes back paler and thinner (the "chasers" tier).
+const PALETTE = [
+  "#3987e5", "#d95926", "#199e70", "#c98500", "#d55181",
+  "#9b7be8", "#35b6d9", "#8fb52a", "#c25fd0", "#b58a5a",
+];
+const HIGHLIGHT_MAX = 20;
 const FIELD = "rgba(137, 135, 129, 0.28)";
 const CARD_BACK = "/cards/card_back_red.png";
 const RANK_NAMES = { 11: "jack", 12: "queen", 13: "king", 14: "ace" };
@@ -112,7 +119,8 @@ function applyLayoutPrefs() {
   const chartFirst = layoutPrefs.chartFirst !== false;
   $("#results").classList.toggle("chart-first", chartFirst);
   $("#chartTopChk").checked = chartFirst;
-  $("#slowOpening").checked = layoutPrefs.slowOpening !== false;
+  $("#slowOpening").checked = layoutPrefs.slowOpening === true;
+  $("#highlightN").value = String(highlightPref());
   const collapsed = tableCollapsed();
   $("#table").classList.toggle("collapsed", collapsed);
   $("#collapseBtn").textContent = collapsed ? "+" : "−";
@@ -1231,14 +1239,51 @@ function buildPlaybackPlan(budget) {
 }
 
 function slowOpeningOn() {
-  return layoutPrefs.slowOpening !== false;
+  return layoutPrefs.slowOpening === true;
+}
+
+function highlightPref() {
+  const n = Number(layoutPrefs.highlightN);
+  return n >= 1 && n <= HIGHLIGHT_MAX ? n : 10;
+}
+
+// The default: one constant rate across the budget, with one exception. At
+// 600k rounds/s the crowded opening is a single frame, so while the field is
+// crowded the rate is capped at one round per frame — the opening of a
+// 1000-player game is about two seconds of cards flipping, then the game
+// runs proportionally. Small games never hit the cap.
+const FRAME_RATE = 60;  // rounds/s: one round per frame
+
+function buildStraightPlan(budget) {
+  const total = state.rounds;
+  const players = state.summary.num_players;
+  const crowded = Math.max(10, players / 4);
+  let openingEnd = 0;
+  const elims = state.elimSorted || [];
+  for (let i = 0; i < elims.length; i++) {
+    if (players - (i + 1) <= crowded) { openingEnd = Math.min(elims[i].round, total); break; }
+  }
+  if (players <= crowded) openingEnd = 0;
+  const straight = Math.max(MIN_SCALED_SPEED, total / budget);
+  const openingSpeed = Math.min(FRAME_RATE, straight);
+  const openingSecs = openingEnd / openingSpeed;
+  const restSpeed = openingEnd < total
+    ? Math.max(MIN_SCALED_SPEED, (total - openingEnd) / Math.max(budget - openingSecs, 0.5 * budget))
+    : straight;
+  const spans = [];
+  if (openingEnd > 0) spans.push({ from: 0, to: openingEnd, phase: "opening", speed: openingSpeed });
+  spans.push({ from: openingEnd, to: total, phase: "duel", speed: restSpeed });
+  return { spans, duelSpeed: restSpeed, openingSecs, phased: false };
 }
 
 function playbackPlan(value) {
-  if (!value.startsWith("d") || !slowOpeningOn()) return null;
+  if (!value.startsWith("d")) return null;
   if (!state || state.game !== "war" || state.mode !== "full" || !state.elimSorted) return null;
   state.plans ??= {};
-  return (state.plans[value] ??= buildPlaybackPlan(Number(value.slice(1))));
+  const key = value + (slowOpeningOn() ? ":phased" : ":straight");
+  return (state.plans[key] ??= slowOpeningOn()
+    ? { ...buildPlaybackPlan(Number(value.slice(1))), phased: true }
+    : buildStraightPlan(Number(value.slice(1))));
 }
 
 function spanAt(plan, at) {
@@ -1273,7 +1318,7 @@ function updateSpeedLabels() {
     const plan = playbackPlan(option.value);
     const speed = plan ? plan.duelSpeed : speedFor(option.value);
     option.textContent = option.value.startsWith("d")
-      ? `${base} · ${fmtNum(Math.round(speed))} rnd/s${plan ? " in the duel" : ""}`
+      ? `${base} · ${fmtNum(Math.round(speed))} rnd/s${plan && plan.phased ? " in the duel" : ""}`
       : `${base} · ${fmtDuration(state.rounds / speed)}`;
   }
 }
@@ -1668,8 +1713,82 @@ function tick(ts) {
 
 // ------------------------------------------------------------------ chart
 
+function highlightN() {
+  return Math.min(highlightPref(), state.summary.num_players);
+}
+
+function highlightStyle(index) {
+  const hue = PALETTE[index % PALETTE.length];
+  const tier = Math.floor(index / PALETTE.length);
+  return tier === 0 ? { color: hue, width: 2 } : { color: hue + "a6", width: 1.25 };
+}
+
+// Everyone ranked by what has happened up to `round`: players still in by
+// cards held (bankroll for blackjack), then players already out, most recent
+// first. An eliminated player's rank never changes again — it is their final
+// place — so nothing here leaks the ending.
+function rankingAt(round) {
+  const { rounds: xs, series } = state.chartData;
+  let i = sampleIndexAt(xs, round);
+  if (xs[i] > round && i > 0) i--;
+  const alive = [], out = [];
+  for (const pid of Object.keys(series)) {
+    const e = state.elimRound ? state.elimRound[pid] : undefined;
+    if (e != null && e <= round) out.push([pid, e]);
+    else alive.push([pid, series[pid][i] ?? -Infinity]);
+  }
+  alive.sort((a, b) => b[1] - a[1]);
+  out.sort((a, b) => b[1] - a[1]);
+  return alive.map((a) => a[0]).concat(out.map((o) => o[0]));
+}
+
+// While the outcome is hidden the colored lines are the leaders of the
+// moment, not the finishers. Colors are sticky: a player takes a free color
+// on entering the top N and keeps it until they fall well below the cutoff,
+// so two players trading tenth place do not swap colors every frame.
+// Scrubbing backwards rebuilds the assignment from scratch (deterministic).
+function liveHighlights(round) {
+  const n = highlightN();
+  const hl = (state.hl ??= { map: new Map(), at: -1, n: 0, cache: null });
+  if (hl.cache && hl.cache.round === round && hl.cache.n === n) return hl.cache.list;
+  if (round < hl.at || hl.n !== n) { hl.map.clear(); hl.n = n; }
+  hl.at = round;
+  const ranking = rankingAt(round);
+  const rankOf = new Map(ranking.map((pid, i) => [pid, i]));
+  const margin = Math.max(2, Math.round(n * 0.3));
+  for (const pid of [...hl.map.keys()]) {
+    if ((rankOf.get(pid) ?? Infinity) >= n + margin) hl.map.delete(pid);
+  }
+  const used = new Set(hl.map.values());
+  for (let i = 0; i < n && i < ranking.length; i++) {
+    const pid = ranking[i];
+    if (hl.map.has(pid)) continue;
+    if (hl.map.size >= n) {
+      // Full: the worst-ranked member is a holder in the hysteresis band
+      // (all n members inside the top n would leave no room for this one).
+      let worst = null;
+      for (const m of hl.map.keys()) {
+        if (worst === null || (rankOf.get(m) ?? Infinity) > (rankOf.get(worst) ?? Infinity)) worst = m;
+      }
+      if ((rankOf.get(worst) ?? Infinity) < n) break;
+      used.delete(hl.map.get(worst));
+      hl.map.delete(worst);
+    }
+    let k = 0;
+    while (used.has(k)) k++;
+    used.add(k);
+    hl.map.set(pid, k);
+  }
+  const list = [...hl.map]
+    .sort((a, b) => rankOf.get(a[0]) - rankOf.get(b[0]))
+    .map(([pid, k]) => ({ pid: Number(pid), rank: rankOf.get(pid) + 1, ...highlightStyle(k) }));
+  hl.cache = { round, n, list };
+  return list;
+}
+
 function topSeries() {
-  return state.standings.slice(0, PALETTE.length).map((pid, i) => ({ pid, color: PALETTE[i] }));
+  if (state.mode === "full" && state.suspense) return liveHighlights(Math.floor(pos));
+  return state.standings.slice(0, highlightN()).map((pid, i) => ({ pid, rank: i + 1, ...highlightStyle(i) }));
 }
 
 function renderLegend() {
@@ -1678,6 +1797,7 @@ function renderLegend() {
   let html = top
     .map(({ pid, color }) => `<span class="chip"><i style="background:${color}"></i>${state.names[pid]}</span>`)
     .join("");
+  state.legendKey = top.map((t) => t.pid + t.color).join();
   if (others > 0) html += `<span class="chip"><i style="background:${FIELD}"></i>Field (${others} other${others === 1 ? "" : "s"})</span>`;
   $("#legend").innerHTML = html;
 }
@@ -1838,8 +1958,9 @@ function drawChart() {
   ctx.rect(pad.left, pad.top - 2, plotW + pad.right, plotH + 4);
   ctx.clip();
   drawField(ctx, width, height, xMax, series, topIds, x, y, xs);
-  for (let i = top.length - 1; i >= 0; i--) drawSeries(String(top[i].pid), top[i].color, 2);
+  for (let i = top.length - 1; i >= 0; i--) drawSeries(String(top[i].pid), top[i].color, top[i].width);
   ctx.restore();
+  if (top.map((t) => t.pid + t.color).join() !== state.legendKey) renderLegend();
   drawOverlay();
 }
 
@@ -1955,13 +2076,16 @@ function handleChartHover(event) {
   const idx = lo > 0 && Math.abs(xs[lo - 1] - round) < Math.abs(xs[lo] - round) ? lo - 1 : lo;
 
   const tooltip = $("#tooltip");
-  const rows = topSeries()
+  const top = topSeries();
+  const shown = top.slice(0, 10);
+  let rows = shown
     .map(({ pid, color }) => {
       const value = state.chartData.series[pid]?.[idx];
       const text = value == null ? "out" : fmtNum(value);
       return `<div><span class="dot" style="background:${color}"></span>${state.names[pid]}: <span class="t-val">${text}</span></div>`;
     })
     .join("");
+  if (top.length > shown.length) rows += `<div class="t-round">+${top.length - shown.length} more highlighted</div>`;
   tooltip.innerHTML = `<div class="t-round">Round ${fmtNum(xs[idx])}</div>${rows}`;
   tooltip.hidden = false;
   const wrapRect = $("#chartWrap").getBoundingClientRect();
@@ -2396,6 +2520,11 @@ $("#collapseBtn").addEventListener("click", () => {
   layoutPrefs.tableCollapsed = !tableCollapsed();
   saveLayoutPrefs();
   applyLayoutPrefs();
+});
+$("#highlightN").addEventListener("change", (event) => {
+  layoutPrefs.highlightN = Number(event.target.value);
+  saveLayoutPrefs();
+  if (state) { state.hl = null; renderLegend(); drawChart(); }
 });
 $("#slowOpening").addEventListener("change", (event) => {
   layoutPrefs.slowOpening = event.target.checked;

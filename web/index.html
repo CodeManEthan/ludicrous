@@ -80,8 +80,8 @@
             <option value="3">3 rnd/s</option>
             <option value="10">10 rnd/s</option>
             <option value="d240">game in ~4 min</option>
-            <option value="d120" selected>game in ~2 min</option>
-            <option value="d60">game in ~1 min</option>
+            <option value="d120">game in ~2 min</option>
+            <option value="d60" selected>game in ~1 min</option>
             <option value="d30">game in ~30 s</option>
           </select>
         </label>
@@ -96,7 +96,15 @@
           <summary class="btn">⚙ Options</summary>
           <div class="opt-panel">
             <label class="chk"><input id="pauseElim" type="checkbox"> pause on eliminations</label>
-            <label class="chk" title="Scaled speeds give the crowded opening and each elimination real screen time, then spend the rest on the final duel"><input id="slowOpening" type="checkbox" checked> slow the opening</label>
+            <label class="chk" title="Give the crowded opening and each elimination real screen time, then spend the rest on the final duel. Off: one rate for the whole game, never faster than a round per frame while the field is crowded"><input id="slowOpening" type="checkbox"> slow the opening</label>
+            <label class="chk sel" id="highlightLabel" title="Colored lines on the chart: the leaders of the moment while the outcome is hidden, the final standings once it is revealed">highlight the top
+              <select id="highlightN">
+                <option value="5">5 players</option>
+                <option value="10" selected>10 players</option>
+                <option value="15">15 players</option>
+                <option value="20">20 players</option>
+              </select>
+            </label>
             <label class="chk"><input id="chartTopChk" type="checkbox" checked> chart above the cards</label>
             <label class="chk sel" id="elimDisplayLabel">eliminated players
               <select id="elimDisplay">

@@ -343,6 +343,11 @@ the phase you watch longest. The scrubber and round counter are untouched.
 Options gains `[x] slow the opening`, on by default; off restores the single
 constant speed.
 
+> As of 2026-09-06 the toggle is **off by default** (see `docs/DESIGN_NOTES.md`,
+> note 4): at 40M rounds the phased plan spent 40% of the budget on a few
+> hundred rounds. Off now means one constant rate with a one-round-per-frame
+> cap while the field is crowded, so the opening still reads on screen.
+
 Games with no elimination data (v1 recordings, Blackjack) use the constant
 speed.
 

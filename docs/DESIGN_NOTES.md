@@ -53,3 +53,21 @@ All three notes are in the working tree. Verified headless in Chromium at 375 px
 - **Note 3.** Chart above the cards is the default (`layoutPrefs.chartFirst !== false`); the toggle still works. On a phone, a table with more than 24 players starts collapsed until the viewer presses the button, and the grid tile minimum drops to 44 px, six per row at 375 px. Desktop is unchanged.
 
 Still open for mobile: the header (title, mode toggle, game, players, decks, Options, Simulate) is 220 px tall at phone width, so the stats and chart start below the fold.
+
+## 4. Playback pacing: straight, not phased
+
+**Observation (2026-09-06).** On a 40M-round game the phased plan spent the first half of playback on the first hundred rounds. Straight playback felt right: the field falling away almost instantly is the truth of the game, and the chart only colors a handful of lines anyway.
+
+**Built.** "Slow the opening" is off by default (the phased plan is still there behind the toggle). Off now means one constant rate across the budget, capped at one round per frame (60 rounds/s) while the field is crowded, so a 1000-player opening is about two seconds of cards flipping and then the game runs proportionally. Small games never hit the cap. Default speed is "game in ~1 min".
+
+## 5. Highlight the top ten, configurable to twenty
+
+**Observation.** Five colored lines came from the five-hue palette, not from a decision about players. Ten reads better; the count should be a setting with a cap.
+
+**Built.** The palette is ten hues (the five validated ones plus five more); from the eleventh highlight the hues come back paler and thinner. "Highlight the top N" in the playback Options popover: 5, 10 (default), 15, 20, saved per viewer, clamped to the player count. The tooltip lists at most ten rows and says how many more are highlighted.
+
+## 6. No spoilers: color the leaders of the moment
+
+**Observation.** Coloring the final top N from round 0 gives away the standings.
+
+**Built.** While the outcome is hidden, everyone is ranked by what has happened so far: players still in by cards held, then players already out, most recent first. An eliminated player's rank is their final place and never changes, so third place stays colored from the moment they go out. The top N of that ranking are colored. Colors are sticky (a player keeps their color until they fall well below the cutoff, and a hysteresis holder is evicted when a real top-N entrant needs a color), and scrubbing backwards rebuilds the assignment deterministically. At the last round the ranking equals the final standings, so nothing switches at the reveal. Verified on 200p/200d (v2), an 8-player v1 game, and a 6-seat blackjack session.
