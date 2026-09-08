@@ -1229,9 +1229,14 @@ function buildPlaybackPlan(budget) {
   const duelRounds = rounds("duel");
   const duelSecs = Math.max(budget - openingSecs - middleSecs, 0.6 * budget);
   const duelSpeed = Math.max(MIN_SCALED_SPEED, duelRounds / duelSecs);
+  // The opening's slow pace is a floor on speed, not a ceiling on time: a
+  // 1000-deck field stays crowded for tens of thousands of rounds, and at
+  // 3 rnd/s that is hours. The opening gets its share of the budget and no
+  // more; a long opening runs faster to fit.
+  const openingSpeed = Math.max(OPENING_RATE, rounds("opening") / openingSecs || 0);
   for (const span of spans) {
     const n = span.to - span.from;
-    span.speed = span.phase === "opening" ? OPENING_RATE
+    span.speed = span.phase === "opening" ? openingSpeed
       : span.phase === "middle" ? Math.max(MIN_SCALED_SPEED, n / beat)
       : duelSpeed;
   }
@@ -1265,7 +1270,10 @@ function buildStraightPlan(budget) {
   }
   if (players <= crowded) openingEnd = 0;
   const straight = Math.max(MIN_SCALED_SPEED, total / budget);
-  const openingSpeed = Math.min(FRAME_RATE, straight);
+  // One round per frame while crowded, but never more than OPENING_SHARE of
+  // the budget: a 1000-deck field is crowded for tens of thousands of rounds,
+  // and at 60 rnd/s that opening alone outlasts the whole budget.
+  const openingSpeed = Math.min(straight, Math.max(FRAME_RATE, openingEnd / (OPENING_SHARE * budget)));
   const openingSecs = openingEnd / openingSpeed;
   const restSpeed = openingEnd < total
     ? Math.max(MIN_SCALED_SPEED, (total - openingEnd) / Math.max(budget - openingSecs, 0.5 * budget))
