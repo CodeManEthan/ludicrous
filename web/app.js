@@ -81,6 +81,16 @@ function parseSeed(text) {
   return h >>> 0;
 }
 
+// The seed box is one-shot. Whatever it holds — typed, filled in from a run
+// URL, or set by a Replay button — runs once and the box empties, so the
+// next Simulate is a new game. The seed that ran stays visible in the Seed
+// tile and the URL; a reload or Back replays it, a click does not.
+function takeSeed() {
+  const seed = parseSeed($("#seed").value);
+  $("#seed").value = "";
+  return seed;
+}
+
 function fmtMs(ms) {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
@@ -455,12 +465,11 @@ function updateEstimateLine() {
   line.classList.toggle("warn", est === null);
 }
 
-async function simulateV2() {
+async function simulateV2(typedSeed) {
   const players = Number($("#players").value);
   const decks = Number($("#decks").value);
   const maxRounds = roundCap();
-  const parsed = parseSeed($("#seed").value);
-  const seed = parsed === null ? Math.floor(Math.random() * 1e9) : parsed;
+  const seed = typedSeed === null ? Math.floor(Math.random() * 1e9) : typedSeed;
   const nameMode = $("#nameMode").value;
 
   pause();
@@ -644,10 +653,11 @@ async function simulate(event) {
   const button = $("#simulateBtn");
   button.disabled = true;
   button.textContent = "Simulating…";
+  const typedSeed = takeSeed();  // once, up front: the server fallback runs the same seed
   try {
     if (engine === "v2") {
       try {
-        await simulateV2();
+        await simulateV2(typedSeed);
         return;
       } catch (error) {
         if (error.v2Final) throw error;
@@ -661,7 +671,7 @@ async function simulate(event) {
       players: Number($("#players").value),
       decks: Number($("#decks").value),
       names: $("#nameMode").value,
-      seed: parseSeed($("#seed").value) ?? "",
+      seed: typedSeed ?? "",
     };
     if (gameType === "blackjack") {
       payload.rounds = Number($("#rounds").value);
@@ -2119,7 +2129,7 @@ async function runBatch() {
       players: Number($("#players").value),
       decks: Number($("#decks").value),
       games: Number($("#games").value),
-      seed: parseSeed($("#seed").value) ?? "",
+      seed: takeSeed() ?? "",
     };
     if (gameType === "blackjack") {
       payload.rounds = Number($("#rounds").value);
