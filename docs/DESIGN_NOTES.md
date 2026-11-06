@@ -1,9 +1,3 @@
----
-type: design-notes
-project: ludicrous
-description: Operator design notes from live use, spoken 2026-09-05, one per numbered item. Each carries the observation, what the code did at the time, and what was built on 2026-09-06 (uncommitted at time of writing).
----
-
 # Design notes, 2026-09-05
 
 ## 1. Mobile: the screen jumps on every event

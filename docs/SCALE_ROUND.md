@@ -1,11 +1,3 @@
----
-type: design
-project: ludicrous
-description: "Scale round, 2026-09-04: compact numbers, a progress screen for single games, a rounds calculator, uncapped rounds, War caps to 1000, native Rust batch behind the server, and elimination-aware playback. Measured basis, decisions, seams, verification plan."
-tags: [design, scale, playback, engine]
-updated: 2026-09-04
----
-
 # Scale round
 
 Ethan's notes, 2026-09-04, and the design that came out of the discussion.

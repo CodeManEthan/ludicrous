@@ -1,11 +1,3 @@
----
-type: repo-doc
-project: ludicrous
-description: "The frozen v1 event-log recording contract: every event type and field, the exact JSON encoding rules, per-round ordering guarantees, which fields the web frontend reads, the recording envelopes that carry events, and the v1 seed contract that makes a recording reproducible."
-tags: [reference, contract, simulation]
-updated: 2026-08-25
----
-
 # Event log schema (v1)
 
 The Python engine in `engine/` records a game as a list of events. That list is
