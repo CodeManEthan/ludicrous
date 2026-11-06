@@ -41,8 +41,6 @@ ENV/
 *.bak
 *~
 
-# Agent scratch (git worktrees, browser session logs) — but skills are part
-# of the repo: they're how any agent knows project workflows like deploying.
+# Agent config and scratch (skills, git worktrees, browser session logs) stay local.
 .claude/*
-!.claude/skills/
 .playwright-cli/
