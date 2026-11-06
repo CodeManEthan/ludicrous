@@ -580,11 +580,17 @@ function setGameType(next) {
   $("#gameSel").value = next;
   if (next === "blackjack") {
     $("#decks").value = 6;
+    // Blackjack runs on the Python server engine, which seats at most 200
+    // (server.py PY_MAX_PLAYERS); only War has the Rust core that takes 1,000.
     $("#players").min = 1;
+    $("#players").max = 200;
+    $("#players").title = "1–200";
     $("#players").value = Math.min(Number($("#players").value), 8) || 4;
   } else {
     $("#decks").value = 3;
     $("#players").min = 2;
+    $("#players").max = 1000;
+    $("#players").title = "2–1000";
     $("#players").value = Math.max(Number($("#players").value), 2) || 6;
   }
   updateForm();

@@ -14,13 +14,13 @@ Built as a headless Python engine (no dependencies) with a web frontend.
 
 ## Features
 
-- **Two games** — War (pure luck, up to 1,000 players) and Blackjack (multi-seat
-  vs the dealer, S17, 3:2 blackjacks, doubling, pair splitting)
+- **Two games** — War (pure luck, up to 1,000 players) and Blackjack (up to 200
+  seats vs the dealer, S17, 3:2 blackjacks, doubling, pair splitting)
 - **Pluggable strategies** — assign hit/stand policies per blackjack seat
   (basic strategy, hit-below-N, never-bust) and measure which actually wins:
   the batch view charts EV per hand by strategy over hundreds of thousands of
   hands
-- **2-1,000 players, 1-1,000 decks** — scale games far beyond what's physically playable
+- **War: 2-1,000 players, 1-1,000 decks; Blackjack: up to 200 seats** — scale games far beyond what's physically playable
 - **Instant simulation** — hundreds of thousands of rounds per second; even a
   2,600-card game finishes in seconds
 - **Video-style playback** — play/pause, 1 to 5,000 rounds/sec, a scrubber,
