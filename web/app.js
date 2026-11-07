@@ -3,8 +3,8 @@
 
 const $ = (sel) => document.querySelector(sel);
 const fmt = new Intl.NumberFormat("en-US");
-// Ten hues that hold apart on the dark panel: the five validated in the
-// dataviz pass, then five more. Highlight index k gets hue k % 10; from k = 10
+// Ten hues that hold apart on the dark panel: the five categorical hues of
+// style.css (--s1 to --s5), then five more. Highlight index k gets hue k % 10; from k = 10
 // the same hue comes back paler and thinner (the "chasers" tier).
 const PALETTE = [
   "#3987e5", "#d95926", "#199e70", "#c98500", "#d55181",

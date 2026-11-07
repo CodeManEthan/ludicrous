@@ -1,4 +1,6 @@
-/* Ludicrous — committed dark theme (card-room). Palette per docs/dataviz. */
+/* Ludicrous — committed dark theme (card-room): near-black surfaces, warm grey
+   ink, and five categorical hues (--s1 to --s5) chosen to stay distinct on the
+   dark surface; app.js extends them to ten for chart highlights. */
 :root {
   color-scheme: dark;
   --page: #0d0d0d;
