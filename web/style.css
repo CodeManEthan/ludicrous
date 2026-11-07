@@ -1,4 +1,6 @@
-/* Ludicrous — committed dark theme (card-room). Palette per docs/dataviz. */
+/* Ludicrous — committed dark theme (card-room): near-black surfaces, warm grey
+   ink, and five categorical hues (--s1 to --s5) chosen to stay distinct on the
+   dark surface; app.js extends them to ten for chart highlights. */
 :root {
   color-scheme: dark;
   --page: #0d0d0d;
@@ -9,7 +11,7 @@
   --muted: #898781;
   --grid-line: #2c2c2a;
   --border: rgba(255, 255, 255, 0.10);
-  --s1: #3987e5;  /* categorical slots (validated, dark surface) */
+  --s1: #3987e5;  /* categorical slots: distinct from each other on the dark surface */
   --s2: #d95926;
   --s3: #199e70;
   --s4: #c98500;
@@ -44,6 +46,7 @@ h1 {
   letter-spacing: 0.14em;
 }
 h1 span { color: var(--muted); font-weight: 400; letter-spacing: 0.04em; }
+h1 .tagline-short { display: none; }
 
 #setup {
   display: flex;
@@ -281,13 +284,23 @@ details.opt-box[open] > summary { background: #2c2c2a; }
 }
 .out-chip b { color: var(--ink-2); font-weight: 600; }
 
+/* At most two lines, and always two lines tall, so what sits below holds
+   still from round to round. A round with many eliminations is summarized
+   (describeEliminations in app.js) and clipped if it still runs long. */
 .banner {
   margin-top: 10px;
   font-size: 15px;
   line-height: 22px;
   color: var(--ink-2);
-  min-height: 22px;
+  height: 44px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  transition: opacity 0.15s;
 }
+/* The round on screen has moved past the one the banner describes. */
+.banner.stale { opacity: 0.45; }
 .banner .war-flash { color: var(--war); font-weight: 700; }
 .banner .win-name { color: var(--ink); font-weight: 600; }
 
@@ -407,7 +420,15 @@ details.opt-box[open] > summary { background: #2c2c2a; }
 }
 
 /* --- blackjack --- */
-.strat-wrap { display: flex; flex-direction: column; gap: 4px; }
+/* The chips get a header row of their own, right-aligned under the form. */
+.strat-wrap {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 10px;
+}
 .strat-title {
   font-size: 11px;
   text-transform: uppercase;
@@ -514,12 +535,107 @@ details.opt-box[open] > summary { background: #2c2c2a; }
 .outliers .btn { padding: 3px 10px; font-size: 12px; }
 
 .welcome {
-  max-width: 560px;
-  margin: 80px auto;
+  max-width: 760px;
+  margin: 56px auto;
+  padding: 0 20px;
   text-align: center;
   color: var(--muted);
   font-size: 15px;
 }
+.welcome p { max-width: 560px; margin: 0 auto 24px; }
+.preset-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.preset-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  background: var(--surface);
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.preset-card b { color: var(--ink); font-size: 15px; }
+.preset-card:hover:not(:disabled) { border-color: var(--s1); }
+.preset-card:disabled { opacity: 0.5; cursor: default; }
+
+/* --- presets under the header, the Batch hint, the cards hint --- */
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  max-width: 1760px;
+  margin: 0 auto;
+  padding: 8px 20px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.preset-row .btn.preset { padding: 3px 10px; font-size: 12px; border-radius: 999px; }
+.batch-hint { color: var(--ink-2); }
+.link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--s1);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-btn:hover { color: #4d95ea; }
+header > .link-btn { font-size: 13px; }
+.cards-hint {
+  align-self: end;
+  padding-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cards-hint.warn { color: #e5c894; }
+.caption { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+
+/* --- footer and the "What is this?" panel --- */
+.site-footer {
+  padding: 16px 20px 28px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.site-footer a, .about a { color: var(--ink-2); }
+.about {
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  background: var(--surface);
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.about::backdrop { background: rgba(13, 13, 13, 0.72); }
+.about-body { padding: 18px 22px 20px; font-size: 14px; }
+.about-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.about h2 { margin: 0; font-size: 18px; color: var(--ink); }
+.about h3 { margin: 18px 0 6px; font-size: 14px; color: var(--ink); letter-spacing: 0.04em; }
+.about p, .about ul, .about ol { margin: 0 0 8px; }
+.about ul, .about ol { padding-left: 22px; }
+.about li { margin-bottom: 4px; }
+.about b { color: var(--ink); font-weight: 600; }
+.about kbd, .about code {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 12px;
+}
+.about-links { margin-top: 14px; }
 
 .error {
   position: fixed;
@@ -614,6 +730,7 @@ details.opt-box[open] > summary { background: #2c2c2a; }
 }
 .finale .win-name { color: var(--good); font-weight: 700; }
 #skipBtn { margin-left: auto; }
+#reelBtn.active { border-color: var(--s1); color: var(--ink); }
 #pauseNote { color: var(--muted); font-size: 12px; }
 .tile .value.masked { color: var(--muted); }
 
@@ -625,28 +742,38 @@ details.opt-box[open] > summary { background: #2c2c2a; }
    instead of three. The same 640px breakpoint is read in app.js. */
 @media (max-width: 640px) {
   header { padding: 10px 12px; gap: 10px; }
+  .preset-row { padding: 6px 12px 0; flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; }
+  /* The chart is the centre of the page: on a phone it comes right after
+     the playback controls, and the stat tiles move below it. */
+  main.chart-first #stats { order: 6; }
+  .about-body { padding: 14px 16px 16px; }
   h1 { font-size: 17px; }
-  h1 span { display: none; }
+  h1 .tagline { display: none; }
+  h1 .tagline-short { display: inline; font-size: 12px; }  /* keeps "What is this?" on the same row */
+  .welcome { padding: 0 16px; }
   main { padding: 10px 12px 32px; gap: 10px; }
   .panel { padding: 10px 12px; border-radius: 10px; }
   .stat-row { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 6px; }
   .tile { padding: 8px 10px; }
   .tile .value { font-size: 18px; }
 
-  .banner {
-    height: 44px;              /* exactly two lines; a long round is clipped, not stacked */
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    font-size: 14px;
-  }
+  .banner { font-size: 14px; }  /* still two lines tall, as on desktop */
   .round-label { min-width: 0; }
   .controls .speed { font-size: 11px; }
 
   .grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px 4px; }
   .grid.bj { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
   .player .pname, .player .pmeta { font-size: 10px; }
+  /* "52 · 166W" is wider than a 44px tile: wrap it onto a second line
+     (always two lines tall, so the grid doesn't jump) instead of running
+     into the next tile's label. */
+  .player .pmeta {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 12px;
+    height: 24px;
+    overflow: hidden;
+  }
   .player img { margin: 2px auto 1px; border-radius: 3px; }
   .out-strip { max-height: 96px; }
 

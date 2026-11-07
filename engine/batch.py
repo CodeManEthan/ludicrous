@@ -11,7 +11,7 @@ from __future__ import annotations
 import atexit
 import statistics
 import threading
-from concurrent.futures import BrokenExecutor, ProcessPoolExecutor
+from concurrent.futures import BrokenExecutor, CancelledError, ProcessPoolExecutor, wait
 
 from .blackjack import BlackjackGame
 from .war import WarGame
@@ -52,13 +52,30 @@ def _run_chunk(worker, chunk: list) -> list:
     return [worker(args) for args in chunk]
 
 
+class BatchCancelled(Exception):
+    """The progress callback asked to stop, and the batch's queued work was dropped.
+
+    ran counts the chunks that ran to the end anyway (those already handed to
+    a worker); total is the number of chunks the batch was split into.
+    """
+
+    def __init__(self, ran: int, total: int):
+        super().__init__(f"batch cancelled: {ran} of {total} chunks ran")
+        self.ran = ran
+        self.total = total
+
+
 def _parallel(worker, args_list: list, progress=None) -> list:
     """Run worker over args_list on the pool; results in input order.
 
     progress, if given, is called as progress(done_items, total_items) from
-    executor callback threads as chunks finish. It must be thread-safe and
-    should never raise (a raise here would leak into the executor's callback
-    machinery, not the caller).
+    executor callback threads as chunks finish. It must be thread-safe. If it
+    returns False (the client is gone), every chunk not yet handed to a
+    worker is cancelled and this call raises BatchCancelled once the chunks
+    already running have finished. The callbacks themselves never raise:
+    they only cancel and set a flag, and the calling thread does the raising,
+    since a raise inside a callback would land in the executor's machinery,
+    not here.
     """
     if len(args_list) == 1:
         results = [worker(args_list[0])]
@@ -71,23 +88,51 @@ def _parallel(worker, args_list: list, progress=None) -> list:
         chunk = max(1, len(args_list) // ((pool._max_workers or 1) * 8))
         chunks = [args_list[i:i + chunk] for i in range(0, len(args_list), chunk)]
         futures = [pool.submit(_run_chunk, worker, c) for c in chunks]
+        cancelled = threading.Event()
         if progress is not None:
             total = len(args_list)
             counted = {"done": 0}
             count_lock = threading.Lock()
             sizes = {id(f): len(c) for f, c in zip(futures, chunks)}
 
+            def _cancel_rest() -> None:
+                # Flag first, so the calling thread never sees a cancelled
+                # future without the flag that explains it. Futures already
+                # running (the executor queues about workers + 1 of them)
+                # refuse to cancel and finish normally.
+                cancelled.set()
+                for f in futures:
+                    f.cancel()
+
             def _on_done(fut):
+                # A cancelled future fires its callbacks too; it did no work.
+                if fut.cancelled():
+                    return
                 with count_lock:
                     counted["done"] += sizes[id(fut)]
                     done = counted["done"]
-                progress(done, total)
+                try:
+                    keep_going = progress(done, total)
+                except Exception:
+                    keep_going = False
+                if keep_going is False:
+                    _cancel_rest()
 
             for f in futures:
                 f.add_done_callback(_on_done)
         results: list = []
-        for f in futures:
-            results.extend(f.result())
+        try:
+            for f in futures:
+                results.extend(f.result())
+        except CancelledError:
+            if not cancelled.is_set():
+                raise
+        if cancelled.is_set():
+            # Let the chunks that were already running finish, so the count
+            # is exact and no work for this batch is left in the pool.
+            wait(futures)
+            ran = sum(1 for f in futures if not f.cancelled())
+            raise BatchCancelled(ran, len(futures))
         return results
 
     try:

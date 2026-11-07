@@ -1,15 +1,26 @@
 #!/usr/bin/env python3
-"""Local web server for Ludicrous.
+"""Web server for Ludicrous.
 
-Serves the browser UI from web/, card images from cards/, and a single API
-endpoint:
+Serves the browser UI from web/, card images from cards/, and three API
+endpoints. Each takes a JSON body; "game" is "war" (the default) or
+"blackjack".
 
-    POST /api/simulate   {"players": 6, "decks": 3, "seed": 42, "names": "random"}
+    POST /api/simulate       one game, e.g.
+                             {"players": 6, "decks": 3, "seed": 42, "names": "random"}
+    POST /api/batch          many games, e.g. {"players": 4, "decks": 1, "games": 1000}
+    POST /api/batch/stream   the same batch with live progress, as
+                             newline-delimited JSON (see Handler.stream_batch)
 
-The response is a game recording. Small games return mode "full" (every event,
-for card-by-card playback). Games whose event log exceeds FULL_EVENT_BUDGET
-return mode "condensed" (chart timeline + milestones only) to keep the payload
-browser-sized. Standard library only — no dependencies.
+/api/simulate returns a game recording. Small games return mode "full" (every
+event, for card-by-card playback). Games whose event log exceeds
+FULL_EVENT_BUDGET return mode "condensed" (chart timeline + milestones only)
+to keep the payload browser-sized. Single War games here run on the Python
+engine, up to 200 players and 200 decks; the page plays larger War games in
+the browser on the Rust core.
+
+War batches run on the native Rust runner (bin/lud-batch) when it is present,
+with the Python engine as the fallback. Blackjack runs on the Python engine.
+Standard library only, no dependencies.
 
 Run:  python3 server.py  [--port 8000]
 """
@@ -35,6 +46,7 @@ from engine import (
     summarize_blackjack_batch,
 )
 from engine import events as ev
+from engine.batch import BatchCancelled
 from random_names import random_300_first_names
 
 ROOT = Path(__file__).parent
@@ -55,6 +67,11 @@ NATIVE_BATCH = ROOT / "bin" / "lud-batch"
 ROUNDS_GRID = WEB_DIR / "rounds-grid.json"
 BATCH_ROUND_BUDGET = 5_000_000_000  # games x typical rounds; a few seconds native here
 MAX_BJ_ROUNDS = 10_000
+# Blackjack batches run in Python on the process pool, about 625k hands a
+# second on the live host, so this is roughly 16 s of every core. A request
+# for more (seats x rounds x games) is refused before any work starts.
+# web/app.js checks the same number before sending.
+BJ_HAND_BUDGET = 10_000_000
 MAX_BATCH_GAMES = 10_000
 FULL_EVENT_BUDGET = 250_000  # events; ~25 MB of JSON is the ceiling for playback mode
 CHART_POINTS = 1200
@@ -203,10 +220,39 @@ def python_max_rounds(config: dict) -> int:
 _grid_cache: dict | None = None
 
 
+def _row_median(grid: dict, players: int, decks: int) -> float | None:
+    """Median rounds for one players row of the grid at `decks`, the way the
+    page's estimateRounds reads a row: from that row's measured points only
+    (its lattice cells and its edge cell), interpolated in log space, and
+    below the row's first point (its edge) the edge cell itself."""
+    points = {}
+    for key, (median, *_rest) in grid.get("cells", {}).items():
+        p, d = (int(x) for x in key.split(":"))
+        if p == players:
+            points[d] = median
+    edge = grid.get("edges", {}).get(str(players))
+    if edge:
+        points[edge[0]] = edge[1]
+    if not points:
+        return None
+    axis = sorted(points)
+    d = min(max(decks, axis[0]), axis[-1])
+    if d in points:
+        return points[d]
+    for lo, hi in zip(axis, axis[1:]):
+        if lo <= d <= hi:
+            t = (math.log(d) - math.log(lo)) / (math.log(hi) - math.log(lo))
+            return math.exp(math.log(points[lo]) * (1 - t) + math.log(points[hi]) * t)
+    return points[axis[0]]
+
+
 def typical_rounds(players: int, decks: int) -> float | None:
     """Median round count for a War config from web/rounds-grid.json, the
     same table the page's calculator reads. Nearest cell in log space is
-    plenty for a work budget. None when the grid is missing."""
+    plenty for a work budget, but it must not read below what was measured:
+    where the nearest players row has an edge cell (the fewest decks that
+    deal everyone a card), the row's own reading counts too, and the larger
+    of the two wins. None when the grid is missing."""
     global _grid_cache
     if _grid_cache is None:
         try:
@@ -222,6 +268,13 @@ def typical_rounds(players: int, decks: int) -> float | None:
         dist = (math.log(p) - math.log(players)) ** 2 + 4 * (math.log(d) - math.log(decks)) ** 2
         if dist < best_d:
             best, best_d = median, dist
+    rows = _grid_cache.get("players") or []
+    if rows:
+        row = min(rows, key=lambda p: abs(math.log(p) - math.log(players)))
+        if str(row) in _grid_cache.get("edges", {}):
+            reading = _row_median(_grid_cache, row, decks)
+            if reading is not None:
+                best = max(best, reading)
     return best
 
 
@@ -290,6 +343,23 @@ def run_simulation(config: dict) -> dict:
     return response
 
 
+def check_blackjack_budget(seats: int, rounds: int, games: int) -> None:
+    """Refuse a Blackjack batch of more than BJ_HAND_BUDGET hands.
+
+    The message names the most games that fit at these seats and rounds;
+    with at most 200 seats and 10,000 rounds that is always at least 5.
+    """
+    hands = seats * rounds * games
+    if hands <= BJ_HAND_BUDGET:
+        return
+    fits = BJ_HAND_BUDGET // (seats * rounds)
+    raise ValueError(
+        f"that batch is about {hands / 1e6:.1f} million hands "
+        f"({games:,} games x {seats:,} seats x {rounds:,} rounds); the budget is "
+        f"{BJ_HAND_BUDGET / 1e6:.0f} million. Fewer games, seats or rounds: "
+        f"at {seats:,} seats and {rounds:,} rounds, up to {fits:,} games fit.")
+
+
 def run_batch_api(config: dict, progress=None) -> dict:
     if config.get("game") == "blackjack":
         seats = int(config.get("players", 4))
@@ -307,6 +377,7 @@ def run_batch_api(config: dict, progress=None) -> dict:
             raise ValueError(f"rounds must be between 1 and {MAX_BJ_ROUNDS}")
         if not 1 <= games <= MAX_BATCH_GAMES:
             raise ValueError(f"games must be between 1 and {MAX_BATCH_GAMES}")
+        check_blackjack_budget(seats, rounds, games)
         start_time = time.perf_counter()
         rows = run_blackjack_batch(seats, decks, rounds, games, strategies,
                                    base_seed=base_seed, progress=progress)
@@ -497,11 +568,12 @@ class Handler(SimpleHTTPRequestHandler):
                 self.wfile.write(data)
                 self.wfile.flush()
 
-        def progress(done: int, total: int) -> None:
-            # Called from executor callback threads. Throttled so a fast
-            # batch doesn't spend its time writing to the socket, and
-            # never raises — a gone client must not poison the pool
-            # (the computation is shared and finishes regardless).
+        def progress(done: int, total: int) -> bool:
+            # Called from executor callback threads (or the native runner's
+            # reader). Throttled so a fast batch doesn't spend its time
+            # writing to the socket, and never raises. Returning False says
+            # the client is gone: the native runner is killed, and the
+            # Python pool drops the batch's queued chunks.
             if throttle["gone"]:
                 return False
             now = time.perf_counter()
@@ -511,7 +583,7 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 send_line({"progress": {"done": done, "total": total}})
             except OSError:
-                throttle["gone"] = True  # the native runner stops; the pool finishes on its own
+                throttle["gone"] = True
                 return False
             return True
 
@@ -522,6 +594,9 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             result = run_batch_api(config, progress=progress)
             send_line({"result": result})
+        except BatchCancelled as cancelled:
+            # The client went away; nobody is left to send the error to.
+            print(f"[ludicrous] {cancelled}", file=sys.stderr, flush=True)
         except (ValueError, TypeError, KeyError, RuntimeError) as error:
             try:
                 send_line({"error": str(error)})

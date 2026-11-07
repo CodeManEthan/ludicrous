@@ -44,3 +44,6 @@ ENV/
 # Agent config and scratch (skills, git worktrees, browser session logs) stay local.
 .claude/*
 .playwright-cli/
+
+# The systemd user unit for the local server is machine-specific and stays local.
+units/

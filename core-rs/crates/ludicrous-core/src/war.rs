@@ -280,14 +280,21 @@ impl<R: GameRng, S: EventSink> WarGame<R, S> {
             let base = pi * cap;
             if head + n <= cap {
                 // Contiguous: shuffle the slice directly.
+                // SAFETY: `players[pi]` above checked pi < num_players, and
+                // head + n <= cap, so `base + head` is inside `buf` (whose length
+                // is num_players * cap) and the n slots after it are too.
                 let ptr = unsafe { buf.as_mut_ptr().add(base + head) };
                 rng.shuffle_with(n, |i, j| {
                     if i != j {
+                        // SAFETY: shuffle_with only passes i, j < n, and the n
+                        // slots from `ptr` lie inside this player's region.
                         unsafe { core::ptr::swap(ptr.add(i), ptr.add(j)) }
                     }
                 });
             } else {
                 // Wraps the ring: same swap sequence, indices folded.
+                // SAFETY: pi < num_players (checked by `players[pi]`), so `base`
+                // is the start of a cap-long region inside `buf`.
                 let ptr = unsafe { buf.as_mut_ptr().add(base) };
                 rng.shuffle_with(n, |i, j| {
                     if i != j {
@@ -299,6 +306,9 @@ impl<R: GameRng, S: EventSink> WarGame<R, S> {
                         if b >= cap {
                             b -= cap;
                         }
+                        // SAFETY: head < cap and i, j < n <= cap, so head + i and
+                        // head + j are below 2 * cap; one fold puts a and b below
+                        // cap, inside this player's region.
                         unsafe { core::ptr::swap(ptr.add(a), ptr.add(b)) }
                     }
                 });
@@ -322,6 +332,9 @@ impl<R: GameRng, S: EventSink> WarGame<R, S> {
         }
         let p = &mut players[pi];
         debug_assert!(p.dcount > 0, "player {} has no cards to draw", pi + 1);
+        // SAFETY: `players[pi]` checked pi < num_players, and head is always
+        // below cap (it wraps to 0 on reaching cap, and restore starts it at 0),
+        // so pi * cap + head < num_players * cap = buf.len().
         let card = unsafe { *buf.get_unchecked(pi * cap + p.head as usize) };
         p.head += 1;
         if p.head as usize == cap {
@@ -352,6 +365,11 @@ impl<R: GameRng, S: EventSink> WarGame<R, S> {
         if k >= cap {
             k -= cap;
         }
+        // SAFETY: `players[pi]` checked pi < num_players. head < cap. A game
+        // never holds more than cap cards (the deal makes exactly cap, and
+        // restore refuses a snapshot with more), and the card being given is
+        // on the table, so dcount + rcount < cap. One fold then puts k below
+        // cap, and pi * cap + k is inside `buf`.
         unsafe { *buf.get_unchecked_mut(pi * cap + k) = card };
         p.rcount += 1;
     }
