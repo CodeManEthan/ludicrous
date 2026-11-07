@@ -35,6 +35,7 @@ from engine import (
     summarize_blackjack_batch,
 )
 from engine import events as ev
+from engine.batch import BatchCancelled
 from random_names import random_300_first_names
 
 ROOT = Path(__file__).parent
@@ -55,6 +56,11 @@ NATIVE_BATCH = ROOT / "bin" / "lud-batch"
 ROUNDS_GRID = WEB_DIR / "rounds-grid.json"
 BATCH_ROUND_BUDGET = 5_000_000_000  # games x typical rounds; a few seconds native here
 MAX_BJ_ROUNDS = 10_000
+# Blackjack batches run in Python on the process pool, about 625k hands a
+# second on the live host, so this is roughly 16 s of every core. A request
+# for more (seats x rounds x games) is refused before any work starts.
+# web/app.js checks the same number before sending.
+BJ_HAND_BUDGET = 10_000_000
 MAX_BATCH_GAMES = 10_000
 FULL_EVENT_BUDGET = 250_000  # events; ~25 MB of JSON is the ceiling for playback mode
 CHART_POINTS = 1200
@@ -290,6 +296,23 @@ def run_simulation(config: dict) -> dict:
     return response
 
 
+def check_blackjack_budget(seats: int, rounds: int, games: int) -> None:
+    """Refuse a Blackjack batch of more than BJ_HAND_BUDGET hands.
+
+    The message names the most games that fit at these seats and rounds;
+    with at most 200 seats and 10,000 rounds that is always at least 5.
+    """
+    hands = seats * rounds * games
+    if hands <= BJ_HAND_BUDGET:
+        return
+    fits = BJ_HAND_BUDGET // (seats * rounds)
+    raise ValueError(
+        f"that batch is about {hands / 1e6:.1f} million hands "
+        f"({games:,} games x {seats:,} seats x {rounds:,} rounds); the budget is "
+        f"{BJ_HAND_BUDGET / 1e6:.0f} million. Fewer games, seats or rounds: "
+        f"at {seats:,} seats and {rounds:,} rounds, up to {fits:,} games fit.")
+
+
 def run_batch_api(config: dict, progress=None) -> dict:
     if config.get("game") == "blackjack":
         seats = int(config.get("players", 4))
@@ -307,6 +330,7 @@ def run_batch_api(config: dict, progress=None) -> dict:
             raise ValueError(f"rounds must be between 1 and {MAX_BJ_ROUNDS}")
         if not 1 <= games <= MAX_BATCH_GAMES:
             raise ValueError(f"games must be between 1 and {MAX_BATCH_GAMES}")
+        check_blackjack_budget(seats, rounds, games)
         start_time = time.perf_counter()
         rows = run_blackjack_batch(seats, decks, rounds, games, strategies,
                                    base_seed=base_seed, progress=progress)
@@ -497,11 +521,12 @@ class Handler(SimpleHTTPRequestHandler):
                 self.wfile.write(data)
                 self.wfile.flush()
 
-        def progress(done: int, total: int) -> None:
-            # Called from executor callback threads. Throttled so a fast
-            # batch doesn't spend its time writing to the socket, and
-            # never raises — a gone client must not poison the pool
-            # (the computation is shared and finishes regardless).
+        def progress(done: int, total: int) -> bool:
+            # Called from executor callback threads (or the native runner's
+            # reader). Throttled so a fast batch doesn't spend its time
+            # writing to the socket, and never raises. Returning False says
+            # the client is gone: the native runner is killed, and the
+            # Python pool drops the batch's queued chunks.
             if throttle["gone"]:
                 return False
             now = time.perf_counter()
@@ -511,7 +536,7 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 send_line({"progress": {"done": done, "total": total}})
             except OSError:
-                throttle["gone"] = True  # the native runner stops; the pool finishes on its own
+                throttle["gone"] = True
                 return False
             return True
 
@@ -522,6 +547,9 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             result = run_batch_api(config, progress=progress)
             send_line({"result": result})
+        except BatchCancelled as cancelled:
+            # The client went away; nobody is left to send the error to.
+            print(f"[ludicrous] {cancelled}", file=sys.stderr, flush=True)
         except (ValueError, TypeError, KeyError, RuntimeError) as error:
             try:
                 send_line({"error": str(error)})
