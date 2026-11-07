@@ -25,6 +25,40 @@ const STRATEGY_META = [
   ["hit-below-17", "Hit below 17"],
 ];
 const STRATEGY_LABELS = Object.fromEntries(STRATEGY_META);
+const STRATEGY_TIPS = {
+  "basic": "The standard chart for this table: hit, stand, double or split by your hand and the dealer's up card. The best you can do without counting cards.",
+  "never-bust": "Hits only when no card can bust the hand (hard 11 or less, soft 17 or less), then stands, whatever the dealer shows.",
+  "hit-below-15": "Hits until the hand reaches 15, then stands. Ignores the dealer's card; never doubles or splits.",
+  "hit-below-16": "Hits until the hand reaches 16, then stands. Ignores the dealer's card; never doubles or splits.",
+  "hit-below-17": "Hits until the hand reaches 17, then stands, like the dealer. Ignores the dealer's card; never doubles or splits.",
+};
+
+// Most hands one Blackjack batch may ask for, counted as seats x rounds x
+// games. The server refuses anything bigger (BJ_HAND_BUDGET in server.py);
+// the page checks the same number before sending, so the refusal is instant.
+const BJ_HAND_BUDGET = 10_000_000;
+
+// The showcase game: what a visit with no URL parameters plays, and the
+// "Ludicrous War" preset. Its deck count is the most decks, among the
+// rounds grid's deck counts, whose estimated in-browser simulation time is
+// under SHOWCASE_MAX_SECONDS (see showcaseDecks()). The seed is fixed so
+// every visitor sees the same game, one whose length is typical for its cell.
+const SHOWCASE_PLAYERS = 1000;
+const SHOWCASE_SEED = 10;
+const SHOWCASE_MAX_SECONDS = 2;
+const SHOWCASE_FALLBACK_DECKS = 256;  // the pick on the committed grid
+
+// Presets fill the form and run. "war" is the showcase game; "huge" is the
+// biggest War game the form allows, behind its progress screen; "showdown"
+// is a Blackjack batch of every strategy, well inside BJ_HAND_BUDGET.
+const PRESETS = {
+  war: { game: "war", mode: "single", players: SHOWCASE_PLAYERS, decks: "showcase", seed: SHOWCASE_SEED, play: true },
+  huge: { game: "war", mode: "single", players: 1000, decks: 1000, seed: 2, play: true },
+  showdown: {
+    game: "blackjack", mode: "batch", players: 10, decks: 6, rounds: 100, games: 1000,
+    strategies: STRATEGY_META.map(([name]) => name),
+  },
+};
 
 let state = null;      // prepared recording (see prepare())
 let pendingRound = null; // round to jump to after load (from ?round= URL param)
@@ -50,6 +84,8 @@ let v2RoundInFlight = false;
 let v2RoundQueued = null;
 let urlEngine = null;  // engine the URL asked for, consumed by the first run
 let loadGen = 0;       // bumped per loaded game, so late replies can't paint
+let playOnLoad = false;    // start playback as soon as the next game loads
+let replaceUrlNext = false; // the next run replaces the URL instead of pushing
 
 // ---------------------------------------------------------------- helpers
 
@@ -407,7 +443,8 @@ function setRoundCap(value) {
 
 let roundsGrid = null;
 
-fetch("/rounds-grid.json")
+// Settles (never rejects) once the grid has loaded or failed to.
+const gridReady = fetch("/rounds-grid.json")
   .then((r) => (r.ok ? r.json() : null))
   .then((grid) => { roundsGrid = grid; updateEstimateLine(); })
   .catch(() => {});
@@ -444,6 +481,86 @@ function estimateRounds(players, decks) {
   return { median, p10, p90, seconds: median / wasmRps, wasmRps };
 }
 
+// Deck count of the showcase game: the most decks, among the grid's deck
+// counts, whose estimated simulation time for SHOWCASE_PLAYERS is under
+// SHOWCASE_MAX_SECONDS. Deck counts too small to deal everyone a card
+// estimate null and drop out. Without the grid, the committed grid's pick.
+function showcaseDecks() {
+  if (!roundsGrid) return SHOWCASE_FALLBACK_DECKS;
+  let best = null;
+  for (const decks of roundsGrid.decks) {
+    const est = estimateRounds(SHOWCASE_PLAYERS, decks);
+    if (est && est.seconds < SHOWCASE_MAX_SECONDS && (best === null || decks > best)) best = decks;
+  }
+  return best ?? SHOWCASE_FALLBACK_DECKS;
+}
+
+// A War game never starts with a player holding no cards. The engines and
+// the server refuse it too; the page refuses first, and the cards hint says
+// so while the inputs are being typed.
+const NOT_ENOUGH_CARDS = "Not enough cards: add decks or remove players";
+
+function warDealProblem(players, decks) {
+  return decks * 52 < players ? NOT_ENOUGH_CARDS : null;
+}
+
+// "≈ 13 cards each" next to Players/Decks.
+function cardsHintText(players, decks) {
+  if (!(players >= 1) || !(decks >= 1)) return "";
+  const problem = warDealProblem(players, decks);
+  if (problem) return problem;
+  const cards = decks * 52;
+  const each = cards / players;
+  const shown = each >= 10 ? Math.round(each) : Math.round(each * 10) / 10;
+  const exact = cards % players === 0;
+  return `${exact ? "" : "≈ "}${fmt.format(shown)} card${shown === 1 ? "" : "s"} each`;
+}
+
+function updateCardsHint() {
+  const hint = $("#cardsHint");
+  if (gameType !== "war") { hint.hidden = true; return; }
+  const text = cardsHintText(Number($("#players").value), Number($("#decks").value));
+  hint.textContent = text;
+  hint.hidden = !text;
+  hint.classList.toggle("warn", text === NOT_ENOUGH_CARDS);
+}
+
+// Cards are dealt round-robin, so when they don't divide evenly the first
+// seats each get one more. Null when they divide evenly.
+function seatBiasCaption(players, decks) {
+  const cards = decks * 52;
+  const extra = cards % players;
+  if (!extra || cards < players) return null;
+  const who = extra === 1 ? "Seat 1 gets" : `Seats 1–${fmt.format(extra)} get`;
+  return `${who} one more card than the rest (${fmt.format(cards)} cards, ` +
+    `${fmt.format(players)} players).`;
+}
+
+// hands / 1e6 to one decimal the way Python's "{:.1f}" prints it, so the
+// budget message matches the server's. The two differ only on an exact tie
+// (Python rounds half to even, toFixed rounds up), and hands / 1e6 is an
+// exact tie only at an odd multiple of 250,000 hands.
+function millionsText(hands) {
+  const x = hands / 1e6;
+  if (hands % 250_000 === 0 && (hands / 250_000) % 2 === 1) {
+    const lower = Math.floor(x * 10);
+    return ((lower % 2 === 0 ? lower : lower + 1) / 10).toFixed(1);
+  }
+  return x.toFixed(1);
+}
+
+// The server's refusal of an over-budget Blackjack batch, word for word
+// (server.py check_blackjack_budget). Null when the batch fits.
+function blackjackBudgetProblem(seats, rounds, games) {
+  const hands = seats * rounds * games;
+  if (hands <= BJ_HAND_BUDGET) return null;
+  const fits = Math.floor(BJ_HAND_BUDGET / (seats * rounds));
+  return `that batch is about ${millionsText(hands)} million hands ` +
+    `(${fmt.format(games)} games x ${fmt.format(seats)} seats x ${fmt.format(rounds)} rounds); ` +
+    `the budget is ${(BJ_HAND_BUDGET / 1e6).toFixed(0)} million. Fewer games, seats or rounds: ` +
+    `at ${fmt.format(seats)} seats and ${fmt.format(rounds)} rounds, up to ${fmt.format(fits)} games fit.`;
+}
+
 function describeEstimate(est, cap) {
   if (est === null) return "Not enough cards for that many players.";
   if (est === undefined) return "";
@@ -473,8 +590,9 @@ async function simulateV2(typedSeed) {
   const nameMode = $("#nameMode").value;
 
   pause();
+  const problem = warDealProblem(players, decks);
+  if (problem) throw finalError(problem);
   const estimate = estimateRounds(players, decks);
-  if (estimate === null) throw finalError("Not enough cards for that many players — add decks or remove players.");
   loadingAbort = new AbortController();
   showLoading(
     `Simulating War — ${fmt.format(players)} players, ${fmt.format(decks)} decks`,
@@ -520,10 +638,11 @@ async function simulateV2(typedSeed) {
   // of dumping you out of the app. A run replayed BY Back (popstate) only
   // corrects the URL in place — pushing there would trap the button.
   if (url.search !== location.search) {
-    if (historyNav) history.replaceState(null, "", url);
+    if (historyNav || replaceUrlNext) history.replaceState(null, "", url);
     else history.pushState(null, "", url);
   }
   historyNav = false;
+  replaceUrlNext = false;
 }
 
 // One round, reconstructed in the worker. Only one request is ever in
@@ -610,7 +729,9 @@ function updateForm() {
   $("#playersLabel").firstChild.textContent = blackjack ? "Seats" : "Players";
   $("#seed").placeholder = batch ? "base seed" : "random";
   $("#simulateBtn").textContent = batch ? "Run batch" : "Simulate";
-  $("#welcomeAction").textContent = batch ? "Run batch" : "Simulate";
+  $("#welcomeSingle").hidden = batch;
+  $("#welcomeBatch").hidden = !batch;
+  updateCardsHint();
 }
 
 function selectedStrategies() {
@@ -623,6 +744,10 @@ function showResults() {
   const hasData = mode === "single" ? state !== null : batchData !== null;
   $("#welcome").hidden = hasData;
   $("#results").hidden = !hasData;
+  // The empty state shows the presets as cards; over results they move to
+  // the small row under the header.
+  $("#presetRow").hidden = !hasData;
+  if (mode !== "single") hideBatchHint();
   for (const sel of BATCH_SECTIONS) $(sel).hidden = mode !== "batch" || !batchData;
   if (mode === "batch" && batchData) {
     $("#evSection").hidden = batchData.game !== "blackjack";
@@ -654,7 +779,17 @@ function showResults() {
 
 async function simulate(event) {
   event.preventDefault();
+  hideBatchHint();
   if (mode === "batch") return runBatch();
+  if (gameType === "war") {
+    const problem = warDealProblem(Number($("#players").value), Number($("#decks").value));
+    if (problem) {
+      playOnLoad = false;
+      replaceUrlNext = false;
+      showError(problem);
+      return;
+    }
+  }
   const engine = pickEngine();
   const button = $("#simulateBtn");
   button.disabled = true;
@@ -703,6 +838,8 @@ async function simulate(event) {
     showError(error.name === "AbortError" ? "Simulation canceled." : error.message);
   } finally {
     hideLoading();
+    playOnLoad = false;
+    replaceUrlNext = false;
     button.disabled = false;
     button.textContent = "Simulate";
   }
@@ -989,7 +1126,7 @@ function activate() {
 
   showResults();
   $("#chartHint").hidden = !full;
-  $("#chartTitle").textContent = blackjack ? "Bankroll over rounds (units)" : "Card counts over time";
+  $("#chartTitle").textContent = blackjack ? "Bankroll over rounds — u = units (1 bet)" : "Card counts over time";
   $("#pauseElim").parentElement.hidden = blackjack;
 
   renderStats();
@@ -1013,6 +1150,7 @@ function activate() {
     buildGrid();
     seek(pendingRound !== null ? pendingRound : 0);
     pendingRound = null;
+    if (playOnLoad) togglePlay();
   } else {
     $("#condensedNote").textContent = blackjack
       ? `This session ran ${fmt.format(state.rounds)} rounds — too long for hand-by-hand playback, ` +
@@ -1036,6 +1174,20 @@ function revealResults() {
   drawChart();     // snap the zoomed axis back to the full game, mask off
   renderHighlights();  // the labeled chips waited for the reveal
   showFinale();
+  maybeShowBatchHint();
+}
+
+// After the first single game a visitor sees to the end, one line points at
+// Batch. Once per viewer; the next run or a click on it hides it.
+function maybeShowBatchHint() {
+  if (layoutPrefs.batchHintShown || mode !== "single") return;
+  layoutPrefs.batchHintShown = true;
+  saveLayoutPrefs();
+  $("#batchHint").hidden = false;
+}
+
+function hideBatchHint() {
+  $("#batchHint").hidden = true;
 }
 
 function showFinale() {
@@ -1350,15 +1502,17 @@ function updateSpeedLabels() {
 function renderStats() {
   const { summary, stats } = state;
   const MASK = "?";  // suspense mode: outcome tiles stay masked until reveal
+  const MASK_TIP = "revealed at the end, or Skip to results";
   const hide = state.suspense;
   const tileHtmlMasked = ([label, value, exact]) =>
     `<div class="tile"><div class="label">${label}</div>` +
-    `<div class="value${value === MASK ? " masked" : ""}" title="${exact ?? value}">${value}</div></div>`;
+    `<div class="value${value === MASK ? " masked" : ""}" ` +
+    `title="${value === MASK ? MASK_TIP : exact ?? value}">${value}</div></div>`;
   let tiles;
   if (state.game === "blackjack") {
     const winner = summary.winner ? summary.seats[summary.winner] : null;
     tiles = [
-      ["Winner",
+      ["Best seat",
        hide ? MASK : winner ? `${winner.name} · ${signed(winner.bankroll)}u` : "—"],
       ["Rounds", fmtNum(summary.rounds), fmt.format(summary.rounds)],
       ["Hands", fmtNum(stats.hands), fmt.format(stats.hands)],
@@ -1818,8 +1972,15 @@ function topSeries() {
 function renderLegend() {
   const top = topSeries();
   const others = state.summary.num_players - top.length;
+  // A Blackjack seat's line is only readable next to the strategy it played.
+  const strategyOf = (pid) => {
+    if (state.game !== "blackjack" || !state.strategies) return "";
+    const name = state.strategies[pid];
+    return name ? ` <span class="hint">· ${STRATEGY_LABELS[name] || name}</span>` : "";
+  };
   let html = top
-    .map(({ pid, color }) => `<span class="chip"><i style="background:${color}"></i>${state.names[pid]}</span>`)
+    .map(({ pid, color }) =>
+      `<span class="chip"><i style="background:${color}"></i>${state.names[pid]}${strategyOf(pid)}</span>`)
     .join("");
   state.legendKey = top.map((t) => t.pid + t.color).join();
   if (others > 0) html += `<span class="chip"><i style="background:${FIELD}"></i>Field (${others} other${others === 1 ? "" : "s"})</span>`;
@@ -2122,6 +2283,19 @@ function handleChartHover(event) {
 // ------------------------------------------------------------------ batch
 
 async function runBatch() {
+  const players = Number($("#players").value);
+  const decks = Number($("#decks").value);
+  const games = Number($("#games").value);
+  const rounds = Number($("#rounds").value);
+  // Refused here, before anything is sent or cleared: the server would
+  // refuse the same batch with the same words.
+  const problem = gameType === "blackjack"
+    ? blackjackBudgetProblem(players, rounds, games)
+    : warDealProblem(players, decks);
+  if (problem) {
+    showError(problem);
+    return;
+  }
   const button = $("#simulateBtn");
   button.disabled = true;
   button.textContent = "Running batch…";
@@ -2130,25 +2304,24 @@ async function runBatch() {
   batchData = null;
   showResults();
   try {
-    const payload = {
-      game: gameType,
-      players: Number($("#players").value),
-      decks: Number($("#decks").value),
-      games: Number($("#games").value),
-      seed: takeSeed() ?? "",
-    };
+    const payload = { game: gameType, players, decks, games, seed: takeSeed() ?? "" };
     if (gameType === "blackjack") {
-      payload.rounds = Number($("#rounds").value);
+      payload.rounds = rounds;
       payload.strategies = selectedStrategies();
     } else {
       payload.max_rounds = roundCap();
     }
-    const work = gameType === "blackjack" ? payload.games * payload.rounds : payload.games;
-    const big = gameType === "blackjack" ? work >= 2_000_000 : payload.games >= 2000;
+    // Blackjack work is hands: every seat plays every round of every game.
+    const big = gameType === "blackjack"
+      ? players * rounds * games >= 2_000_000
+      : games >= 2000;
+    const bigNote = gameType === "blackjack"
+      ? "Large batch — the server deals every hand, so this can take a while."
+      : "Large batch — the server simulates every game, so this can take minutes.";
     loadingAbort = new AbortController();
     showLoading(
       `Running ${fmt.format(payload.games)} ${gameType} ${payload.games === 1 ? "game" : "games"}…`,
-      big ? "Large batch — the server simulates every game, so this can take minutes." : "");
+      big ? bigNote : "");
     // The stream route sends live progress; the buffered route stays as a
     // fallback for anything without ReadableStream response bodies.
     const streaming = typeof ReadableStream === "function";
@@ -2171,7 +2344,7 @@ async function runBatch() {
     renderBatch();
   } catch (error) {
     showError(error.name === "AbortError"
-      ? "Batch canceled. (The server may keep crunching the old request for a while.)"
+      ? "Batch canceled. The server drops the batch's queued work; only games already running finish."
       : error.message);
   } finally {
     hideLoading();
@@ -2244,6 +2417,10 @@ function renderBatch() {
   ];
   $("#batchStats").innerHTML = tiles.map(tileHtml).join("");
   fitTiles($("#batchStats"));
+  const totalCards = config.total_cards ?? config.decks * 52;
+  const caption = seatBiasCaption(config.players, totalCards / 52);
+  $("#seatCaption").textContent = caption || "";
+  $("#seatCaption").hidden = !caption;
   const finished = batchData.games.filter((g) => g.completed);
   histValues = (finished.length ? finished : batchData.games).map((g) => g.rounds);
   drawHistogram();
@@ -2489,6 +2666,61 @@ function renderOutliers() {
     longest.map((g) => row(g, "longest")).join("");
 }
 
+// ----------------------------------------------------------------- presets
+
+function fillPreset(preset) {
+  setGameType(preset.game);
+  setMode(preset.mode);
+  $("#players").value = preset.players;
+  $("#decks").value = preset.decks === "showcase" ? showcaseDecks() : preset.decks;
+  if (preset.rounds) $("#rounds").value = preset.rounds;
+  if (preset.games) $("#games").value = preset.games;
+  if (preset.strategies) {
+    const wanted = new Set(preset.strategies);
+    for (const chip of $("#stratChips").children) {
+      chip.classList.toggle("on", wanted.has(chip.dataset.name));
+    }
+  }
+  setRoundCap(0);
+  $("#nameMode").value = "random";
+  $("#seed").value = preset.seed ?? "";
+  updateEstimateLine();
+  updateCardsHint();
+}
+
+async function runPreset(name) {
+  const preset = PRESETS[name];
+  if (!preset || $("#simulateBtn").disabled) return;  // a run is in flight
+  await gridReady;
+  fillPreset(preset);
+  playOnLoad = !!preset.play;
+  $("#setup").requestSubmit();
+}
+
+// A visit with no URL parameters plays the showcase game straight away:
+// simulated in the browser, then played back, with no Highlights reel. Its
+// URL replaces the bare one, so Back never lands on an empty page. Without
+// the in-browser engine (the server engine refuses 1,000 players), or if the
+// run fails or is canceled, the empty state and its presets stay, no error.
+async function playArrival() {
+  if (!v2Available()) return;
+  await gridReady;
+  fillPreset(PRESETS.war);
+  const button = $("#simulateBtn");
+  button.disabled = true;
+  playOnLoad = true;
+  replaceUrlNext = true;
+  try {
+    await simulateV2(takeSeed());
+  } catch (error) {
+    console.warn("[ludicrous] the showcase game did not run:", error);
+  } finally {
+    playOnLoad = false;
+    replaceUrlNext = false;
+    button.disabled = false;
+  }
+}
+
 function replaySeed(seed) {
   $("#seed").value = seed;
   const nameModeBefore = $("#nameMode").value;
@@ -2560,8 +2792,8 @@ $("#capRounds").addEventListener("change", (event) => {
   updateEstimateLine();
 });
 $("#maxRounds").addEventListener("input", updateEstimateLine);
-$("#players").addEventListener("input", updateEstimateLine);
-$("#decks").addEventListener("input", updateEstimateLine);
+$("#players").addEventListener("input", () => { updateEstimateLine(); updateCardsHint(); });
+$("#decks").addEventListener("input", () => { updateEstimateLine(); updateCardsHint(); });
 $("#elimDisplay").addEventListener("change", (event) => {
   layoutPrefs.elimDisplay = event.target.value;
   saveLayoutPrefs();
@@ -2587,7 +2819,7 @@ $("#overlay").addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (!state || state.mode !== "full") return;
+  if (!state || state.mode !== "full" || $("#about").open) return;
   if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
   if (event.code === "Space") { event.preventDefault(); togglePlay(); }
   if (event.code === "ArrowRight") { pause(); seek(current + 1); }
@@ -2641,6 +2873,30 @@ $("#evWrap").addEventListener("mouseleave", () => { $("#evTip").hidden = true; }
 
 $("#gameSel").addEventListener("change", (event) => setGameType(event.target.value));
 
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-preset]");
+  if (button && !button.disabled) runPreset(button.dataset.preset);
+});
+if (!v2Available()) {
+  // Both War presets are 1,000-player games, which only the in-browser
+  // engine runs.
+  for (const button of document.querySelectorAll('[data-preset="war"], [data-preset="huge"]')) {
+    button.disabled = true;
+    button.title = "Needs a browser with WebAssembly and Web Workers";
+  }
+}
+$("#batchHintBtn").addEventListener("click", () => {
+  hideBatchHint();
+  setMode("batch");
+});
+
+$("#aboutBtn").addEventListener("click", () => $("#about").showModal());
+$("#aboutClose").addEventListener("click", () => $("#about").close());
+$("#about").addEventListener("click", (event) => {
+  // A click on the backdrop lands on the dialog itself.
+  if (event.target === $("#about")) $("#about").close();
+});
+
 window.addEventListener("resize", () => {
   if (mode === "single" && state) drawChart();
   if (mode === "batch" && batchData) {
@@ -2658,6 +2914,7 @@ window.addEventListener("resize", () => {
     chip.type = "button";
     chip.dataset.name = name;
     chip.textContent = label;
+    chip.title = STRATEGY_TIPS[name] || label;
     if (name === "basic" || name === "hit-below-17") chip.classList.add("on");
     chip.addEventListener("click", () => {
       if (chip.classList.contains("on") && selectedStrategies().length === 1) return;
@@ -2709,7 +2966,8 @@ function applyUrlParams(params) {
 }
 
 (function initFromUrl() {
-  applyUrlParams(new URLSearchParams(location.search));
+  const ran = applyUrlParams(new URLSearchParams(location.search));
+  if (!ran && location.search === "") playArrival();
 })();
 
 // Back/Forward re-runs the game at that URL (v2 re-simulates in ~100 ms).

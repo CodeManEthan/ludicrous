@@ -10,6 +10,7 @@
 <body>
   <header>
     <h1>LUDICROUS <span>games at impossible scale</span></h1>
+    <button type="button" id="aboutBtn" class="link-btn">What is this?</button>
     <form id="setup">
       <div class="mode-toggle" id="modeToggle">
         <button type="button" data-mode="single" class="active">Single game</button>
@@ -27,6 +28,8 @@
       <label>Decks
         <input id="decks" type="number" min="1" max="1000" value="3" title="1–1000">
       </label>
+      <span id="cardsHint" class="cards-hint" aria-live="polite"
+            title="Cards are dealt round-robin, so when they don't divide evenly the first seats get one more"></span>
       <label id="roundsLabel" hidden>Rounds
         <input id="rounds" type="number" min="1" max="10000" value="100">
       </label>
@@ -34,7 +37,7 @@
         <input id="games" type="number" min="1" max="10000" value="1000">
       </label>
       <div id="stratWrap" class="strat-wrap" hidden>
-        <span class="strat-title">Strategies (round-robin)</span>
+        <span class="strat-title" title="Seats take the chosen strategies in turn: seat 1 the first, seat 2 the second, and so on, starting again from the first when the list runs out">Strategies (round-robin)</span>
         <div id="stratChips" class="strat-chips"></div>
       </div>
       <details id="advancedBox" class="opt-box">
@@ -54,13 +57,24 @@
           <label>Seed
             <input id="seed" type="text" inputmode="numeric" placeholder="random" size="9">
           </label>
-          <button id="importBtn" class="btn" type="button" title="Load a recording saved with simulate.py --json">Import…</button>
+          <button id="importBtn" class="btn" type="button" title="Load a game saved by the command-line simulator (simulate.py --json)">Import…</button>
         </div>
       </details>
       <button id="simulateBtn" class="btn primary" type="submit">Simulate</button>
       <input id="importFile" type="file" accept=".json,application/json" hidden>
     </form>
   </header>
+
+  <nav id="presetRow" class="preset-row" aria-label="Presets">
+    <span class="preset-label">Try</span>
+    <button type="button" class="btn preset" data-preset="war">Ludicrous War</button>
+    <button type="button" class="btn preset" data-preset="huge">1,000 × 1,000</button>
+    <button type="button" class="btn preset" data-preset="showdown">Blackjack strategy showdown</button>
+    <span id="batchHint" class="batch-hint" hidden>
+      · Try <button type="button" class="link-btn" id="batchHintBtn">Batch</button>:
+      run 1,000 games at once and compare.
+    </span>
+  </nav>
 
   <main id="results" hidden>
     <section id="stats" class="stat-row"></section>
@@ -178,6 +192,7 @@
         <canvas id="seatChart"></canvas>
         <div id="seatTip" class="tip" hidden></div>
       </div>
+      <p id="seatCaption" class="caption" hidden></p>
     </section>
 
     <section id="outlierSection" class="panel" hidden>
@@ -192,20 +207,138 @@
   </main>
 
   <div id="welcome" class="welcome">
-    Configure a game and hit <b id="welcomeAction">Simulate</b> — the whole game
-    runs instantly, then you can play it back at any speed, scrub it like a
-    video, and see how the card counts evolved.
+    <p id="welcomeSingle">
+      Configure a game and hit <b>Simulate</b> — the whole game
+      runs instantly, then you can play it back at any speed, scrub it like a
+      video, and see how the card counts evolved.
+    </p>
+    <p id="welcomeBatch" hidden>
+      Run 1,000 games and compare strategies: for Blackjack, which way of playing
+      loses least per hand; for War, how long games run and whether any seat wins
+      more than its share. Hit <b>Run batch</b>, or start from a preset.
+    </p>
+    <div class="preset-cards">
+      <button type="button" class="preset-card" data-preset="war">
+        <b>Ludicrous War</b>
+        <span>1,000 players and a few hundred decks: millions of rounds, simulated in your browser in about two seconds.</span>
+      </button>
+      <button type="button" class="preset-card" data-preset="huge">
+        <b>1,000 × 1,000</b>
+        <span>1,000 players, 1,000 decks, over a hundred million rounds. Watch the engine work through it.</span>
+      </button>
+      <button type="button" class="preset-card" data-preset="showdown">
+        <b>Blackjack strategy showdown</b>
+        <span>All five strategies, 1,000 sessions of 100 rounds each, compared by what they win or lose per hand.</span>
+      </button>
+    </div>
   </div>
 
-  <div id="loading" class="loading" hidden>
-    <div class="card">
-      <div class="spinner"></div>
-      <div id="loadingTitle">Simulating…</div>
-      <div class="pbar" id="loadingBarWrap" hidden><div id="loadingBar"></div></div>
-      <div id="loadingCount" hidden></div>
-      <div id="loadingElapsed">&nbsp;</div>
-      <div id="loadingNote" hidden></div>
-      <button id="loadingCancel" class="btn" type="button">Cancel</button>
+  <footer class="site-footer">
+    Ludicrous by Ethan ·
+    <a href="https://github.com/CodeManEthan/ludicrous" target="_blank" rel="noopener">Source on GitHub</a> ·
+    <a href="https://codemanethan.github.io/projects/ludicrous/" target="_blank" rel="noopener">Portfolio</a>
+  </footer>
+
+  <dialog id="about" class="about" aria-labelledby="aboutTitle">
+    <div class="about-body">
+      <div class="about-head">
+        <h2 id="aboutTitle">What is this?</h2>
+        <button type="button" id="aboutClose" class="btn icon" title="Close (Esc)">✕</button>
+      </div>
+      <p>
+        Ludicrous takes games meant for a kitchen table and runs them far past
+        anything you could play for real: 1,000 players, 1,000 decks, hundreds of
+        millions of rounds. The whole game is simulated first, in seconds; then you
+        play it back like a video.
+      </p>
+
+      <h3>War</h3>
+      <ol>
+        <li>The decks are shuffled together and dealt round-robin to every player.</li>
+        <li>Each round, every player turns over their top card.</li>
+        <li>The highest card takes every card played that round.</li>
+        <li>A tie for highest goes to war: each tied player puts 3 cards face down and
+          one face up, and the highest of those takes the lot (a war can repeat).</li>
+        <li>A player with no cards is out. The last player holding cards wins.</li>
+      </ol>
+      <p>
+        Cards rank 2 (low) to Ace (high); suits don't matter, so with many decks two
+        identical cards simply tie. Players and decks are set separately: 1,000
+        players on 20 decks get about one card each and most are out in round 1,
+        while 256 decks give each player 13 cards and a long, crowded game.
+      </p>
+      <p>
+        <b>Cap rounds at</b> (under Options) stops a game at that round. A capped
+        game has no winner and reads <i>unfinished</i>. It's off by default, so
+        every game plays to the end.
+      </p>
+
+      <h3>Blackjack</h3>
+      <p>
+        Up to 200 seats against one dealer (dealer stands on soft 17, blackjack pays
+        3:2, doubling and splitting allowed). Each seat plays a fixed strategy, given
+        out round-robin from the ones you pick. Bankrolls are in units, one unit
+        being one bet.
+      </p>
+      <ul>
+        <li><b>Basic strategy</b>: the standard chart. Hit, stand, double or split
+          by your hand and the dealer's up card. The best you can do without
+          counting cards.</li>
+        <li><b>Never bust</b>: hit only when no card can bust you, then stand.</li>
+        <li><b>Hit below 15 / 16 / 17</b>: hit until the hand reaches that total,
+          then stand, whatever the dealer shows.</li>
+      </ul>
+
+      <h3>Batch</h3>
+      <p>
+        Batch runs a thousand games (or ten thousand) and shows what happens on
+        average. For War: how long games run, whether any seat wins more than its
+        share, and the shortest and longest games, each of which you can replay.
+        For Blackjack: each strategy's expected win or loss per hand.
+      </p>
+
+      <h3>Watching a game</h3>
+      <ul>
+        <li>The winner, the chart's future and the outcome tiles stay hidden until
+          playback reaches the end; <b>Skip to results</b> reveals them.</li>
+        <li><b>Highlights</b> plays only the key moments: eliminations, the deepest
+          war, the biggest pot, lead changes.</li>
+        <li><b>Slow the opening</b> (under ⚙ Options) gives the crowded first rounds
+          and each elimination real screen time, then spends the rest on the
+          final duel.</li>
+        <li><b>Eliminated players</b> can collapse into a strip, stay dimmed, hide
+          after a while, or hide at once.</li>
+        <li>Keys: <kbd>Space</kbd> plays and pauses; <kbd>←</kbd> <kbd>→</kbd> step one round.</li>
+        <li><b>Import…</b> loads a game saved by the command-line simulator
+          (<code>simulate.py --json</code>) and plays it back here.</li>
+      </ul>
+
+      <h3>How it works</h3>
+      <p>
+        War runs in your browser: the engine is written in Rust and compiled to
+        WebAssembly, and it runs in a background worker. It simulates the whole
+        game once, keeps snapshots along the way, and rebuilds any round from the
+        nearest snapshot, so scrubbing a hundred-million-round game is instant.
+        Blackjack and Batch run on the server: Blackjack on the Python engine,
+        War batches on the same Rust core built as a native program across every
+        CPU core. Every game is seeded, so the same seed replays the same game.
+      </p>
+      <p class="about-links">
+        <a href="https://github.com/CodeManEthan/ludicrous" target="_blank" rel="noopener">Source on GitHub</a> ·
+        <a href="https://codemanethan.github.io/projects/ludicrous/" target="_blank" rel="noopener">Portfolio</a>
+      </p>
+      </div>
+    </dialog>
+
+    <div id="loading" class="loading" hidden>
+      <div class="card">
+        <div class="spinner"></div>
+        <div id="loadingTitle">Simulating…</div>
+        <div class="pbar" id="loadingBarWrap" hidden><div id="loadingBar"></div></div>
+        <div id="loadingCount" hidden></div>
+        <div id="loadingElapsed">&nbsp;</div>
+        <div id="loadingNote" hidden></div>
+        <button id="loadingCancel" class="btn" type="button">Cancel</button>
     </div>
   </div>
 
