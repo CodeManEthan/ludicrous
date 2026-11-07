@@ -2797,6 +2797,7 @@ async function runPreset(name) {
   const preset = PRESETS[name];
   if (!preset || $("#simulateBtn").disabled) return;  // a run is in flight
   await gridReady;
+  if ($("#simulateBtn").disabled) return;  // a run started while the grid loaded
   fillPreset(preset);
   playOnLoad = !!preset.play;
   $("#setup").requestSubmit();
@@ -2809,13 +2810,15 @@ async function runPreset(name) {
 // run fails or is canceled, the empty state and its presets stay, no error.
 async function playArrival() {
   if (!v2Available()) return;
-  await gridReady;
-  fillPreset(PRESETS.war);
+  // Claim the button before waiting on the grid, so a preset clicked while
+  // the grid loads can't start a second run beside this one.
   const button = $("#simulateBtn");
   button.disabled = true;
-  playOnLoad = true;
-  replaceUrlNext = true;
   try {
+    await gridReady;
+    fillPreset(PRESETS.war);
+    playOnLoad = true;
+    replaceUrlNext = true;
     await simulateV2(takeSeed());
   } catch (error) {
     console.warn("[ludicrous] the showcase game did not run:", error);
