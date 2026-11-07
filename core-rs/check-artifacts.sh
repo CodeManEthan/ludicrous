@@ -6,11 +6,12 @@
 #   bin/lud-batch                                                (build-native.sh)
 #
 # CI runs this as the "artifacts" job; run it locally the same way. It needs
-# rustup, cargo and a C linker (cc) on the machine, and installs what else is
-# missing: the pinned rustc with both targets (through rustup, only when the
-# active rustc is not already the pinned one) and the pinned wasm-bindgen-cli
-# (cargo install --locked). The pins are in pinned-env.sh. Rebuilt files are
-# left in the tree, so after a failure `git diff --stat` shows what moved.
+# rustup and a C compiler (cargo builds the host-side proc macros with it), and
+# installs what else is missing: the pinned rustc with both targets (through
+# rustup, only when the active rustc is not already the pinned one) and, via
+# build-wasm.sh, the pinned wasm-bindgen-cli under core-rs/target. The pins are
+# in pinned-env.sh. Rebuilt files are left in the tree, so after a failure
+# `git diff --stat` shows what moved.
 set -euo pipefail
 cd "$(dirname "$0")"
 source ./pinned-env.sh
@@ -22,12 +23,6 @@ if ! have_pinned_rustc; then
 fi
 require_pinned_rustc
 rustc --version
-
-if ! have_pinned_wasm_bindgen; then
-  cargo install wasm-bindgen-cli --version "$PINNED_WASM_BINDGEN" --locked
-fi
-require_pinned_wasm_bindgen
-wasm-bindgen --version
 
 FILES=(
   ../web/core/ludicrous_wasm_bg.wasm

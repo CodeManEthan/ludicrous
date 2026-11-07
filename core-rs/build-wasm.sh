@@ -6,7 +6,8 @@
 # The browser build is --target no-modules on purpose: web/app.js is a classic
 # script and the wasm lives in a classic Worker, so importScripts() has to be
 # able to pull the glue in. Needs rustc 1.98.0 with the wasm32-unknown-unknown
-# target and wasm-bindgen 0.2.127 (see pinned-env.sh).
+# target (see pinned-env.sh). wasm-bindgen 0.2.127 is installed under
+# target/pinned-tools on first run.
 #
 # No wasm-opt: its output depends on the binaryen version, and the committed
 # files must rebuild byte for byte from the source and the pinned tools alone.
@@ -16,7 +17,7 @@ cd "$(dirname "$0")"
 source ./pinned-env.sh
 
 require_pinned_rustc
-require_pinned_wasm_bindgen
+ensure_pinned_wasm_bindgen
 
 TARGET_DIR=target/wasm32-unknown-unknown/release
 OUT=pkg
@@ -26,14 +27,14 @@ pinned_cargo build --locked --release -p ludicrous-wasm --target wasm32-unknown-
 
 # ---- Node bundle (benchmarks)
 rm -rf "$OUT"
-wasm-bindgen "$TARGET_DIR/ludicrous_wasm.wasm" --out-dir "$OUT" --target nodejs
+"$WASM_BINDGEN" "$TARGET_DIR/ludicrous_wasm.wasm" --out-dir "$OUT" --target nodejs
 RAW=$(stat -c %s "$OUT/ludicrous_wasm_bg.wasm")
 gzip -9 -c "$OUT/ludicrous_wasm_bg.wasm" > "$OUT/ludicrous_wasm_bg.wasm.gz"
 GZ=$(stat -c %s "$OUT/ludicrous_wasm_bg.wasm.gz")
 
 # ---- Browser bundle (committed into the web app)
 rm -rf "$WEB_OUT"
-wasm-bindgen "$TARGET_DIR/ludicrous_wasm.wasm" --out-dir "$WEB_OUT" \
+"$WASM_BINDGEN" "$TARGET_DIR/ludicrous_wasm.wasm" --out-dir "$WEB_OUT" \
   --target no-modules --no-typescript
 
 # Stamp the glue so nobody hand-edits a generated file.

@@ -7,10 +7,16 @@
 # and get the same bytes:
 #
 #   rustc 1.98.0 with the wasm32-unknown-unknown and x86_64-unknown-linux-musl
-#   targets, and wasm-bindgen-cli 0.2.127 (cargo install --locked).
+#   targets, and wasm-bindgen-cli 0.2.127 built from its own lockfile.
 #
-# The only host tool left in the build is the system linker (cc) that rustc
-# drives for the musl binary.
+# No host tool touches the output: the musl binary is linked by the rust-lld
+# that ships with rustc, not the system cc/ld, whose layout differs between
+# binutils versions. (cargo still needs a cc to build the host-side proc
+# macros, but that doesn't reach the artifacts.)
+#
+# wasm-bindgen comes from a copy installed under target/pinned-tools with
+# --locked, never from PATH: a copy installed without --locked can pull a newer
+# walrus, which stamps its version into the wasm and changes the bytes.
 #
 # The pin lives here rather than in a rust-toolchain.toml so that
 # `cargo test` keeps running on whatever stable is current: the tests should
@@ -24,6 +30,8 @@ PINNED_TARGETS=(wasm32-unknown-unknown x86_64-unknown-linux-musl)
 
 CARGO_DIR=${CARGO_HOME:-$HOME/.cargo}
 REPO_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+TOOLS_DIR=$REPO_DIR/core-rs/target/pinned-tools
+WASM_BINDGEN=$TOOLS_DIR/bin/wasm-bindgen
 export PATH="$CARGO_DIR/bin:$PATH"
 
 # True when the active rustc is the pinned one and has both targets.
@@ -40,8 +48,17 @@ have_pinned_rustc() {
   done
 }
 
-have_pinned_wasm_bindgen() {
-  [ "$(wasm-bindgen --version 2>/dev/null || true)" = "wasm-bindgen $PINNED_WASM_BINDGEN" ]
+# Install the locked wasm-bindgen into target/pinned-tools if it isn't there
+# yet; cargo skips the build when that version is already installed.
+ensure_pinned_wasm_bindgen() {
+  cargo install --quiet --locked --root "$TOOLS_DIR" \
+    wasm-bindgen-cli --version "$PINNED_WASM_BINDGEN" --bin wasm-bindgen
+  local found
+  found=$("$WASM_BINDGEN" --version 2>/dev/null || true)
+  if [ "$found" != "wasm-bindgen $PINNED_WASM_BINDGEN" ]; then
+    echo "error: need wasm-bindgen $PINNED_WASM_BINDGEN in $TOOLS_DIR, found: ${found:-none}" >&2
+    exit 1
+  fi
 }
 
 require_pinned_rustc() {
@@ -51,15 +68,6 @@ require_pinned_rustc() {
     echo "  rustup toolchain install $PINNED_RUSTC --profile minimal \\" >&2
     echo "    --target $(IFS=,; echo "${PINNED_TARGETS[*]}")" >&2
     echo "  then rerun with RUSTUP_TOOLCHAIN=$PINNED_RUSTC" >&2
-    exit 1
-  fi
-}
-
-require_pinned_wasm_bindgen() {
-  if ! have_pinned_wasm_bindgen; then
-    echo "error: need wasm-bindgen $PINNED_WASM_BINDGEN, found:" \
-      "$(wasm-bindgen --version 2>/dev/null || echo none)" >&2
-    echo "  cargo install wasm-bindgen-cli --version $PINNED_WASM_BINDGEN --locked" >&2
     exit 1
   fi
 }
