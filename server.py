@@ -209,10 +209,39 @@ def python_max_rounds(config: dict) -> int:
 _grid_cache: dict | None = None
 
 
+def _row_median(grid: dict, players: int, decks: int) -> float | None:
+    """Median rounds for one players row of the grid at `decks`, the way the
+    page's estimateRounds reads a row: from that row's measured points only
+    (its lattice cells and its edge cell), interpolated in log space, and
+    below the row's first point (its edge) the edge cell itself."""
+    points = {}
+    for key, (median, *_rest) in grid.get("cells", {}).items():
+        p, d = (int(x) for x in key.split(":"))
+        if p == players:
+            points[d] = median
+    edge = grid.get("edges", {}).get(str(players))
+    if edge:
+        points[edge[0]] = edge[1]
+    if not points:
+        return None
+    axis = sorted(points)
+    d = min(max(decks, axis[0]), axis[-1])
+    if d in points:
+        return points[d]
+    for lo, hi in zip(axis, axis[1:]):
+        if lo <= d <= hi:
+            t = (math.log(d) - math.log(lo)) / (math.log(hi) - math.log(lo))
+            return math.exp(math.log(points[lo]) * (1 - t) + math.log(points[hi]) * t)
+    return points[axis[0]]
+
+
 def typical_rounds(players: int, decks: int) -> float | None:
     """Median round count for a War config from web/rounds-grid.json, the
     same table the page's calculator reads. Nearest cell in log space is
-    plenty for a work budget. None when the grid is missing."""
+    plenty for a work budget, but it must not read below what was measured:
+    where the nearest players row has an edge cell (the fewest decks that
+    deal everyone a card), the row's own reading counts too, and the larger
+    of the two wins. None when the grid is missing."""
     global _grid_cache
     if _grid_cache is None:
         try:
@@ -228,6 +257,13 @@ def typical_rounds(players: int, decks: int) -> float | None:
         dist = (math.log(p) - math.log(players)) ** 2 + 4 * (math.log(d) - math.log(decks)) ** 2
         if dist < best_d:
             best, best_d = median, dist
+    rows = _grid_cache.get("players") or []
+    if rows:
+        row = min(rows, key=lambda p: abs(math.log(p) - math.log(players)))
+        if str(row) in _grid_cache.get("edges", {}):
+            reading = _row_median(_grid_cache, row, decks)
+            if reading is not None:
+                best = max(best, reading)
     return best
 
 

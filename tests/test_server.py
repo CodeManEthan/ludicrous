@@ -59,6 +59,15 @@ class TestWarBudget(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "the budget is 5 billion"):
             server.run_batch_api(config)
 
+    def test_typical_rounds_never_below_a_measured_edge(self):
+        # The budget reads the grid; at a row's edge (the fewest decks that
+        # deal every player a card) it must not read below what was measured.
+        grid = json.loads(server.ROUNDS_GRID.read_text())
+        self.assertEqual(sorted(grid["edges"], key=int), ["128", "256", "512", "1000"])
+        for players, (decks, median, *_rest) in grid["edges"].items():
+            with self.subTest(players=players, decks=decks):
+                self.assertGreaterEqual(server.typical_rounds(int(players), decks), median)
+
 
 class TestParallelCancel(unittest.TestCase):
     @classmethod
