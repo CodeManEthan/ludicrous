@@ -31,3 +31,16 @@ jobs:
       # The oracle fixtures are committed, so parity runs without Python.
       - name: Run the workspace tests
         run: cargo test --workspace
+
+  artifacts:
+    name: Committed builds match the source
+    # A fixed image, not ubuntu-latest: the musl binary is linked by the
+    # runner's cc, so the check is only as stable as that linker.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # Installs the pinned rustc and wasm-bindgen-cli, rebuilds the wasm
+      # bundle and bin/lud-batch, and fails unless they match the committed
+      # files byte for byte.
+      - name: Rebuild and compare
+        run: core-rs/check-artifacts.sh

@@ -216,13 +216,21 @@ impl<S: EventSink> WarGame<Xoshiro256ss, S> {
             });
         }
         let cap = g.cap;
+        // A game holds exactly `cap` cards, so the hands and the table can't
+        // add up to more. Play writes cards into the per-player rings without
+        // bounds checks and relies on this, so a snapshot that breaks it is
+        // refused here.
+        let held: usize = metas
+            .iter()
+            .map(|m| (m.dcount + m.rcount) as usize)
+            .sum();
+        if held + g.table.len() > cap {
+            return Err(CheckpointError::Inconsistent);
+        }
         let mut alive = 0u32;
         g.active.clear();
         for (pi, m) in metas.iter().enumerate() {
             let n = (m.dcount + m.rcount) as usize;
-            if n > cap {
-                return Err(CheckpointError::Inconsistent);
-            }
             let cards = r.take(n)?;
             g.buf[pi * cap..pi * cap + n].copy_from_slice(cards);
             g.players[pi] = *m;
