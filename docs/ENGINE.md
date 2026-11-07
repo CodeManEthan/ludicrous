@@ -1,9 +1,13 @@
 # Headless Engine (`engine/`)
 
-The `engine` package is the games' backend: pure Python, no GUI imports. It
+The `engine` package is the Python game engine: pure Python, no GUI imports. It
 simulates games and emits an **event log** — a complete recording that any
 frontend (the web UI, the CLI, tests) can replay at any speed without
 re-running the simulation.
+
+It is the reference implementation. War also runs on a Rust core, in the browser as
+WebAssembly and on the server as a native batch runner, which tests hold to these
+rules game for game; see [the README's architecture section](../README.md#architecture).
 
 ## Layout
 
@@ -131,8 +135,8 @@ card-count-over-time series for charts.
 ## Rules parity with the retired tkinter version
 
 The rules are a faithful port of the original tkinter app's
-`war_game_logic.py` (retired; preserved in git history at the "Snapshot:
-final tkinter version" commit), including all five tiebreaker types (Default,
+`war_game_logic.py` (retired; preserved in git history at commit `13df36d`,
+"Snapshot: final tkinter version"), including all five tiebreaker types (Default,
 Forfeit, Modified, Modified Forfeit, Draw), reserve-deck reshuffling, and even
 table splits on drawn wars. Two deliberate differences:
 
