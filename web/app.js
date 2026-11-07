@@ -437,9 +437,17 @@ function setRoundCap(value) {
 // How long will this game be? rounds-grid.json holds, per (players, decks)
 // cell, the median / p10 / p90 round count over 50 seeds and the native
 // rounds/s, measured offline (core-rs/crates/ludicrous-bench/examples/grid.rs).
-// Rounds grow ~quadratically with the shoe and barely with players, so a
-// bilinear interpolation in log space between the four surrounding cells is
-// plenty. The wasm build runs at about a third of native speed.
+// Rounds grow ~quadratically with the shoe and barely with players, so
+// interpolating in log space between measured cells is plenty. The wasm
+// build runs at a fraction of native speed (wasm_speed_factor).
+//
+// Every estimate is built from measured cells only. A players row is
+// measured at its lattice cells and at its edge, the fewest decks that deal
+// every player a card (the grid's "edges" when that is not a lattice deck
+// count). At or above its edge a row interpolates between its own measured
+// points; below it (where that row's game can't be dealt) the row reads its
+// edge cell. Never from another row's cells. The estimate blends the two
+// rows that bracket the players count.
 
 let roundsGrid = null;
 
@@ -449,34 +457,44 @@ const gridReady = fetch("/rounds-grid.json")
   .then((grid) => { roundsGrid = grid; updateEstimateLine(); })
   .catch(() => {});
 
+// [lo, hi, t] on a sorted axis for value v (clamped to the axis), with t the
+// position of v between lo and hi in log space.
+function logBracket(axis, v) {
+  const c = Math.min(Math.max(v, axis[0]), axis[axis.length - 1]);
+  let i = 0;
+  while (i < axis.length - 2 && axis[i + 1] < c) i++;
+  const lo = axis[i], hi = axis[i + 1] ?? axis[i];
+  const t = hi === lo ? 0 : (Math.log(c) - Math.log(lo)) / (Math.log(hi) - Math.log(lo));
+  return [lo, hi, t];
+}
+
+// Logs of [median, p10, p90, rps] for one players row at `decks`, from that
+// row's measured points only. Null when the row has none.
+function rowEstimate(players, decks) {
+  const { decks: ds, cells, edges } = roundsGrid;
+  const points = new Map();
+  for (const d of ds) {
+    const cell = cells[`${players}:${d}`];
+    if (cell) points.set(d, cell);
+  }
+  const edge = edges && edges[players];
+  if (edge) points.set(edge[0], edge.slice(1));
+  if (!points.size) return null;
+  const axis = [...points.keys()].sort((a, b) => a - b);
+  // Below the first measured point (the edge) the row reads that point.
+  const [lo, hi, t] = logBracket(axis, Math.max(decks, axis[0]));
+  const a = points.get(lo), b = points.get(hi);
+  return [0, 1, 2, 3].map((k) => Math.log(a[k]) * (1 - t) + Math.log(b[k]) * t);
+}
+
 function estimateRounds(players, decks) {
   if (decks * 52 < players) return null;
   if (!roundsGrid) return undefined;
-  const { players: ps, decks: ds, cells } = roundsGrid;
-  const bracket = (axis, v) => {
-    const c = Math.min(Math.max(v, axis[0]), axis[axis.length - 1]);
-    let i = 0;
-    while (i < axis.length - 2 && axis[i + 1] < c) i++;
-    const lo = axis[i], hi = axis[i + 1];
-    const t = hi === lo ? 0 : (Math.log(c) - Math.log(lo)) / (Math.log(hi) - Math.log(lo));
-    return [lo, hi, t];
-  };
-  const [p0, p1, tp] = bracket(ps, players);
-  const [d0, d1, td] = bracket(ds, decks);
-  const corners = [[p0, d0], [p0, d1], [p1, d0], [p1, d1]].map(([p, d]) => cells[`${p}:${d}`]);
-  // A corner can be missing where the shoe is too small for the players;
-  // fall back to whatever corners exist (the estimate is coarse anyway).
-  const present = corners.filter(Boolean);
-  if (!present.length) return null;
-  const pick = (k) => {
-    const v = corners.map((c) => (c ? Math.log(c[k]) : null));
-    const fill = present.reduce((a, c) => a + Math.log(c[k]), 0) / present.length;
-    const w = v.map((x) => (x === null ? fill : x));
-    const lo = w[0] * (1 - td) + w[1] * td;
-    const hi = w[2] * (1 - td) + w[3] * td;
-    return Math.exp(lo * (1 - tp) + hi * tp);
-  };
-  const median = pick(0), p10 = pick(1), p90 = pick(2), rps = pick(3);
+  const [p0, p1, tp] = logBracket(roundsGrid.players, players);
+  const r0 = rowEstimate(p0, decks), r1 = rowEstimate(p1, decks);
+  if (!r0 && !r1) return null;
+  const lo = r0 || r1, hi = r1 || r0;
+  const [median, p10, p90, rps] = lo.map((v, k) => Math.exp(v * (1 - tp) + hi[k] * tp));
   const wasmRps = rps * (roundsGrid.wasm_speed_factor || 0.33);
   return { median, p10, p90, seconds: median / wasmRps, wasmRps };
 }
@@ -484,7 +502,7 @@ function estimateRounds(players, decks) {
 // Deck count of the showcase game: the most decks, among the grid's deck
 // counts, whose estimated simulation time for SHOWCASE_PLAYERS is under
 // SHOWCASE_MAX_SECONDS. Deck counts too small to deal everyone a card
-// estimate null and drop out. Without the grid, the committed grid's pick.
+// drop out. Without the grid, the committed grid's pick.
 function showcaseDecks() {
   if (!roundsGrid) return SHOWCASE_FALLBACK_DECKS;
   let best = null;
@@ -629,20 +647,10 @@ async function simulateV2(typedSeed) {
   state = buildV2State(result, makeNames(players, nameMode, seed));
   state.prepareMs = result.prepareMs;
   activate();
-  const url = new URL(location.href);
-  url.search = new URLSearchParams({
-    engine: "v2", players, decks, max_rounds: maxRounds,
-    names: nameMode, seed, run: "1",
-  }).toString();
-  // Each run is a history entry, so Back walks through your games instead
-  // of dumping you out of the app. A run replayed BY Back (popstate) only
-  // corrects the URL in place — pushing there would trap the button.
-  if (url.search !== location.search) {
-    if (historyNav || replaceUrlNext) history.replaceState(null, "", url);
-    else history.pushState(null, "", url);
-  }
-  historyNav = false;
-  replaceUrlNext = false;
+  writeRunUrl({
+    game: "war", mode: "single", engine: "v2", players, decks, maxRounds,
+    names: nameMode, seed,
+  });
 }
 
 // One round, reconstructed in the worker. Only one request is ever in
@@ -834,12 +842,14 @@ async function simulate(event) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     load(data, performance.now() - startedAt);
+    writeRunUrl(serverRunConfig(payload, data.summary));
   } catch (error) {
     showError(error.name === "AbortError" ? "Simulation canceled." : error.message);
   } finally {
     hideLoading();
     playOnLoad = false;
     replaceUrlNext = false;
+    historyNav = false;
     button.disabled = false;
     button.textContent = "Simulate";
   }
@@ -1123,6 +1133,8 @@ function activate() {
   $("#skipBtn").hidden = !state.suspense;
   $("#finale").hidden = true;
   $("#pauseNote").hidden = true;
+  $("#banner").classList.remove("stale");
+  $("#banner")._round = undefined;
 
   showResults();
   $("#chartHint").hidden = !full;
@@ -1141,6 +1153,8 @@ function activate() {
   if (hasReel) {
     const secs = state.highlights.length * ((REEL_LEAD + REEL_TAIL) / REEL_SPEED + 0.15);
     $("#reelBtn").textContent = `▶ Highlights (${fmtDuration(secs)})`;
+    $("#reelBtn").dataset.label = $("#reelBtn").textContent;
+    $("#reelBtn").classList.remove("active");
   }
   renderHighlights();
 
@@ -1172,6 +1186,7 @@ function revealResults() {
   renderStats();
   showResults();   // re-evaluates the unfinished-game note
   drawChart();     // snap the zoomed axis back to the full game, mask off
+  renderLegend();  // final standings now: their colors no longer change
   renderHighlights();  // the labeled chips waited for the reveal
   showFinale();
   maybeShowBatchHint();
@@ -1317,7 +1332,7 @@ function advanceReel() {
   reel.idx += 1;
   const moments = state.highlights;
   if (reel.idx >= moments.length) {
-    reel = null;
+    setReel(null);
     return false;
   }
   const moment = moments[reel.idx];
@@ -1326,10 +1341,25 @@ function advanceReel() {
   return true;
 }
 
+// While the reel plays its button stops it (so does Escape).
+function setReel(next) {
+  reel = next;
+  const button = $("#reelBtn");
+  if (!button || !state || !state.highlights) return;
+  const label = (button.dataset.label ??= button.textContent);
+  button.textContent = reel ? "■ Stop highlights" : label;
+  button.classList.toggle("active", !!reel);
+}
+
+function toggleReel() {
+  if (reel) pause();
+  else playReel();
+}
+
 function playReel() {
   if (!state || !state.highlights || !state.highlights.length) return;
   pause();  // also clears any running reel
-  reel = { idx: -1, until: 0 };
+  setReel({ idx: -1, until: 0 });
   advanceReel();
   playing = true;
   lastTs = 0;
@@ -1483,19 +1513,57 @@ function playSpeed() {
   return playSpeedAt(pos);
 }
 
-// "10 rnd/s" means nothing for a 41,919-round game until you do the division
-// — so do it for the user: absolute speeds show how long THIS game takes,
-// scaled speeds show the rate they work out to.
+// How long playback takes, for the speed labels: "~33 s", "~15 min".
+function fmtPlayTime(seconds) {
+  if (seconds < 90) return `~${Math.max(1, Math.round(seconds))} s`;
+  if (seconds < 5400) return `~${Math.round(seconds / 60)} min`;
+  if (seconds < 99 * 3600) return `~${(seconds / 3600).toFixed(1)} h`;
+  return `~${Math.round(seconds / 86400)} d`;
+}
+
+// Seconds the whole game takes at a speed-select value.
+function playTime(value) {
+  const plan = playbackPlan(value);
+  if (!plan) return state.rounds / speedFor(value);
+  return plan.spans.reduce((secs, span) => secs + (span.to - span.from) / span.speed, 0);
+}
+
+// The label of one speed option for the loaded game. "10 rnd/s" means
+// nothing for a 41,919-round game until you do the division, so both kinds
+// read "<rate> · <duration>" the same way round: absolute speeds show how
+// long THIS game takes, scaled speeds the rate they work out to. A short game
+// hits the 3 rnd/s floor and finishes early; then its "game in ~N" says the
+// real time ("game in ~33 s · 3 rnd/s"), not the budget it couldn't use.
+function speedLabel(value, base) {
+  const plan = playbackPlan(value);
+  const speed = plan ? plan.duelSpeed : speedFor(value);
+  const secs = playTime(value);
+  if (!value.startsWith("d")) return `${base} · game in ${fmtPlayTime(secs)}`;
+  const budget = Number(value.slice(1));
+  const head = secs < 0.95 * budget ? `game in ${fmtPlayTime(secs)}` : base;
+  return `${head} · ${fmtNum(Math.round(speed))} rnd/s${plan && plan.phased ? " in the duel" : ""}`;
+}
+
+// Relabel the speed options for the loaded game. Options that end up with
+// the same label play the same way, so only one of them shows: the selected
+// one if it is among them (the default never disappears), else the first.
 function updateSpeedLabels() {
   const full = state && state.mode === "full";
-  for (const option of $("#speedSel").options) {
+  const select = $("#speedSel");
+  const groups = new Map();
+  for (const option of select.options) {
     const base = (option.dataset.base ??= option.textContent);
-    if (!full) { option.textContent = base; continue; }
-    const plan = playbackPlan(option.value);
-    const speed = plan ? plan.duelSpeed : speedFor(option.value);
-    option.textContent = option.value.startsWith("d")
-      ? `${base} · ${fmtNum(Math.round(speed))} rnd/s${plan && plan.phased ? " in the duel" : ""}`
-      : `${base} · ${fmtDuration(state.rounds / speed)}`;
+    option.textContent = full ? speedLabel(option.value, base) : base;
+    const group = groups.get(option.textContent) || [];
+    group.push(option);
+    groups.set(option.textContent, group);
+  }
+  for (const group of groups.values()) {
+    const keep = group.find((option) => option.selected) || group[0];
+    for (const option of group) {
+      option.hidden = option !== keep;
+      option.disabled = option !== keep;
+    }
   }
 }
 
@@ -1619,11 +1687,29 @@ function describeRound(roundData, round) {
   } else if (roundData.drawn) {
     parts.push(`<span class="war-flash">Drawn war</span> — table split between ${roundData.drawn.players.length} players`);
   }
-  for (const pid of roundData.elims) {
-    const place = state.standings.indexOf(pid) + 1;
-    parts.push(`${state.names[pid]} eliminated (#${place})`);
-  }
+  const out = roundData.elims.map((pid) => ({ place: state.standings.indexOf(pid) + 1, name: state.names[pid] }));
+  if (out.length) parts.push(describeEliminations(out));
   return `Round ${fmt.format(round)}: ` + parts.join(" · ");
+}
+
+// The eliminations of one round, for the banner. Up to three are named;
+// more are counted, with their places as a range when the places run
+// without a gap ("210 players eliminated (#791–#1000)"), or the first three
+// and "and N more" when they don't. `out` is [{place, name}].
+const NAMED_ELIMINATIONS = 3;
+
+function describeEliminations(out) {
+  if (out.length <= NAMED_ELIMINATIONS) {
+    return out.map(({ place, name }) => `${name} eliminated (#${place})`).join(" · ");
+  }
+  const places = out.map((e) => e.place).sort((a, b) => a - b);
+  const first = places[0], last = places[places.length - 1];
+  const contiguous = last - first === places.length - 1;
+  const which = contiguous
+    ? `#${first}–#${last}`
+    : places.slice(0, NAMED_ELIMINATIONS).map((p) => `#${p}`).join(", ") +
+      ` and ${fmt.format(places.length - NAMED_ELIMINATIONS)} more`;
+  return `${fmt.format(out.length)} players eliminated (${which})`;
 }
 
 function render(round) {
@@ -1639,6 +1725,11 @@ function render(round) {
     return;
   }
   renderWarRound(round);
+  // In-browser games paint each round when the worker answers, one request
+  // at a time; at high speed the playhead runs ahead of the banner, which is
+  // dimmed until it describes the round on screen again.
+  const banner = $("#banner");
+  banner.classList.toggle("stale", banner._round !== round);
   if (state.suspense) drawChart(); else drawOverlay();
 }
 
@@ -1689,7 +1780,10 @@ function paintWarRound(round, roundData, wins) {
     tile.querySelector(".pmeta").textContent = text;
   }
   renderOutStrip(round);
-  $("#banner").innerHTML = describeRound(roundData, round);
+  const banner = $("#banner");
+  banner.innerHTML = describeRound(roundData, round);
+  banner._round = round;
+  banner.classList.toggle("stale", round !== current);
 }
 
 // The out-strip: in "collapse into a strip" mode, eliminated players leave
@@ -1807,7 +1901,7 @@ function renderElimFeed() {
 // --------------------------------------------------------------- playback
 
 function seek(round) {
-  if (!reelJumping) reel = null;  // manual navigation ends the reel
+  if (!reelJumping && reel) setReel(null);  // manual navigation ends the reel
   round = Math.max(0, Math.min(state.rounds, Math.round(round)));
   pos = round;
   if (round !== current) render(round);
@@ -1815,7 +1909,7 @@ function seek(round) {
 
 function pause() {
   playing = false;
-  reel = null;
+  if (reel) setReel(null);
   const btn = $("#playBtn");
   if (btn) btn.textContent = "▶";
   const note = $("#pauseNote");
@@ -1985,6 +2079,14 @@ function renderLegend() {
   state.legendKey = top.map((t) => t.pid + t.color).join();
   if (others > 0) html += `<span class="chip"><i style="background:${FIELD}"></i>Field (${others} other${others === 1 ? "" : "s"})</span>`;
   $("#legend").innerHTML = html;
+  // While the outcome is hidden the colored lines are the leaders of the
+  // moment (see liveHighlights), so a player's color can change mid-game.
+  const live = state.mode === "full" && state.suspense && others > 0;
+  $("#colorCaption").hidden = !live;
+  if (live) {
+    $("#colorCaption").textContent =
+      `Colors follow the current top ${highlightN()}; a player can change color as the lead changes.`;
+  }
 }
 
 // Numbers in boxes are compact ("7.07M", "45.2k"); numbers in sentences are
@@ -2342,12 +2444,15 @@ async function runBatch() {
     }
     batchData = data;
     renderBatch();
+    writeRunUrl(batchRunConfig(payload, data));
   } catch (error) {
     showError(error.name === "AbortError"
       ? "Batch canceled. The server drops the batch's queued work; only games already running finish."
       : error.message);
   } finally {
     hideLoading();
+    replaceUrlNext = false;
+    historyNav = false;
     button.disabled = false;
     button.textContent = mode === "batch" ? "Run batch" : "Simulate";
   }
@@ -2750,7 +2855,7 @@ $("#skipBtn").addEventListener("click", () => {
   revealResults();
   seek(state.rounds);
 });
-$("#reelBtn").addEventListener("click", playReel);
+$("#reelBtn").addEventListener("click", toggleReel);
 $("#highlights").addEventListener("click", (event) => {
   const chip = event.target.closest("button[data-hl]");
   if (!chip) return;
@@ -2819,6 +2924,19 @@ $("#overlay").addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !$("#about").open) {
+    const open = document.querySelectorAll("details.opt-box[open]");
+    for (const box of open) box.open = false;
+    if (open.length) {
+      event.preventDefault();
+      return;
+    }
+    if (reel) {
+      event.preventDefault();
+      pause();
+      return;
+    }
+  }
   if (!state || state.mode !== "full" || $("#about").open) return;
   if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
   if (event.code === "Space") { event.preventDefault(); togglePlay(); }
@@ -2924,49 +3042,176 @@ window.addEventListener("resize", () => {
   }
 })();
 
-// URL parameters: prefill the form, optionally auto-run and jump to a round.
-// e.g. /?players=6&decks=3&seed=1&names=random&run=1&round=42
-//      /?engine=v2&players=6&decks=3&seed=1&run=1   (client-side wasm engine)
-//      /?mode=batch&players=4&decks=1&games=1000&seed=0&run=1
-//      /?game=blackjack&players=4&rounds=100&strategies=basic,hit-below-17&run=1
+// ------------------------------------------------------------- run URLs
 //
-// `engine` is the only new key. Absent means v1, so every share URL written
-// before v2 existed still replays through the Python server exactly as it
-// did; `engine=v2` re-simulates in the browser instead.
+// A run's URL reproduces the run: every input to the simulation is in its
+// query, so a reload, a shared link, or Back/Forward runs the same game or
+// batch again. Playback preferences (speed, highlight count, slow opening,
+// the eliminated-player display) stay per viewer and are never in the URL.
+//
+//   War single     ?engine=v2&players=6&decks=3&max_rounds=0&names=random&seed=1&run=1
+//   Blackjack      ?game=blackjack&players=4&decks=6&rounds=100&strategies=basic,hit-below-17&seed=1&run=1
+//   War batch      ?mode=batch&engine=v2&players=4&decks=1&games=1000&max_rounds=0&seed=0&run=1
+//   Blackjack batch ?game=blackjack&mode=batch&players=10&decks=6&rounds=100&games=1000&strategies=…&seed=0&run=1
+//
+// `round=N` on a War single link jumps to that round, revealed. A War run
+// writes engine=v2 when it ran on the Rust core. A War single link with
+// neither `game` nor `mode` is the shape every link had before Blackjack
+// and Batch had URLs; with no `engine` it replays on the server (v1), and
+// with no max_rounds under the old 1M cap, exactly as it did when written.
+// Those two defaults apply to that shape only.
 let historyNav = false;  // the next run came from Back/Forward, not a click
 
-function applyUrlParams(params) {
-  if (params.has("engine")) urlEngine = params.get("engine") === "v2" ? "v2" : "v1";
-  setGameType(params.get("game") === "blackjack" ? "blackjack" : "war");
-  setMode(params.get("mode") === "batch" ? "batch" : "single");
-  if (params.has("players")) $("#players").value = params.get("players");
-  if (params.has("decks")) $("#decks").value = params.get("decks");
-  if (params.has("rounds")) $("#rounds").value = params.get("rounds");
-  if (params.has("games")) $("#games").value = params.get("games");
-  // max_rounds=0 is "no cap". A run link from before caps were optional has
-  // no max_rounds at all and meant the old 1M default; keep it so the link
-  // replays the game it promised.
-  if (params.has("max_rounds")) setRoundCap(params.get("max_rounds"));
-  else if (params.get("run") === "1" && !params.has("engine")) setRoundCap(1_000_000);
-  if (params.has("seed")) $("#seed").value = params.get("seed");
-  if (params.has("names")) $("#nameMode").value = params.get("names");
-  if (params.has("strategies")) {
-    const wanted = new Set(params.get("strategies").split(","));
+// The query string for a finished run. `config` is what ran: game, mode,
+// players, decks, seed, and per kind rounds, games, strategies, maxRounds
+// (0 = no cap), names, and engine ("v2" when it ran on the Rust core).
+function runQuery(config) {
+  const war = config.game !== "blackjack";
+  const batch = config.mode === "batch";
+  const q = new URLSearchParams();
+  if (!war) q.set("game", "blackjack");
+  if (batch) q.set("mode", "batch");
+  if (war && config.engine === "v2") q.set("engine", "v2");
+  q.set("players", config.players);
+  q.set("decks", config.decks);
+  if (!war) q.set("rounds", config.rounds);
+  if (batch) q.set("games", config.games);
+  if (war) q.set("max_rounds", config.maxRounds ?? 0);
+  if (war && !batch) q.set("names", config.names);
+  if (!war) q.set("strategies", config.strategies.join(","));
+  q.set("seed", config.seed);
+  q.set("run", "1");
+  return q.toString();
+}
+
+// The run config a URL asks for (the inverse of runQuery), plus `run`
+// (start it now) and `round` (jump there). Keys the URL doesn't name are
+// left out, so the form keeps what it has.
+function configFromQuery(params) {
+  const config = {
+    game: params.get("game") === "blackjack" ? "blackjack" : "war",
+    mode: params.get("mode") === "batch" ? "batch" : "single",
+  };
+  const run = params.get("run") === "1";
+  const legacy = !params.has("game") && !params.has("mode");
+  const num = (key) => {
+    if (!params.has(key)) return undefined;
+    const n = Number(params.get(key));
+    return Number.isFinite(n) ? n : undefined;
+  };
+  if (config.game === "war") {
+    if (params.has("engine")) config.engine = params.get("engine") === "v2" ? "v2" : "v1";
+    else if (legacy && run) config.engine = "v1";
+  }
+  for (const [key, field] of [["players", "players"], ["decks", "decks"], ["rounds", "rounds"],
+    ["games", "games"], ["max_rounds", "maxRounds"]]) {
+    const n = num(key);
+    if (n !== undefined) config[field] = n;
+  }
+  if (config.maxRounds === undefined && legacy && run && !params.has("engine")) {
+    config.maxRounds = 1_000_000;
+  }
+  if (params.has("names")) config.names = params.get("names");
+  if (params.has("strategies")) config.strategies = params.get("strategies").split(",").filter(Boolean);
+  if (params.has("seed")) {
+    const raw = params.get("seed");
+    config.seed = /^\d+$/.test(raw) ? Number(raw) : raw;
+  }
+  if (params.has("round")) config.round = Number(params.get("round"));
+  config.run = run;
+  return config;
+}
+
+// What a single game run on the server was: Blackjack, or War when the
+// in-browser engine is missing or a link asked for the server. War here
+// writes no engine, so the link replays on the server, as it ran.
+function serverRunConfig(payload, summary) {
+  const config = {
+    game: payload.game, mode: "single", players: payload.players, decks: payload.decks,
+    seed: summary.seed,
+  };
+  if (payload.game === "blackjack") {
+    config.rounds = payload.rounds;
+    config.strategies = [...payload.strategies];
+  } else {
+    config.engine = "v1";
+    config.maxRounds = payload.max_rounds;
+    config.names = payload.names;
+  }
+  return config;
+}
+
+// What a batch run was, with the base seed the server used.
+function batchRunConfig(payload, data) {
+  const config = {
+    game: payload.game, mode: "batch", players: payload.players, decks: payload.decks,
+    games: payload.games, seed: data.config.base_seed,
+  };
+  if (payload.game === "blackjack") {
+    config.rounds = payload.rounds;
+    config.strategies = [...payload.strategies];
+  } else {
+    config.maxRounds = payload.max_rounds;
+    if (data.engine === "v2") config.engine = "v2";
+  }
+  return config;
+}
+
+// Each run is a history entry, so Back walks through your runs instead of
+// dumping you out of the app. A run replayed BY Back/Forward, or one that
+// replaces a URL (the arrival game, a link being opened), only corrects the
+// URL in place: pushing there would trap the button.
+function writeRunUrl(config) {
+  const url = new URL(location.href);
+  url.search = runQuery(config);
+  if (url.search !== location.search) {
+    if (historyNav || replaceUrlNext) history.replaceState(null, "", url);
+    else history.pushState(null, "", url);
+  }
+  historyNav = false;
+  replaceUrlNext = false;
+}
+
+// Fill the form from a run config and start it if it asks to.
+function applyRunConfig(config) {
+  setGameType(config.game);
+  setMode(config.mode);
+  // Only a War single game chooses its engine; a batch runs where the
+  // server runs it.
+  urlEngine = config.game === "war" && config.mode === "single" ? config.engine ?? null : null;
+  if (config.players !== undefined) $("#players").value = config.players;
+  if (config.decks !== undefined) $("#decks").value = config.decks;
+  if (config.rounds !== undefined) $("#rounds").value = config.rounds;
+  if (config.games !== undefined) $("#games").value = config.games;
+  if (config.maxRounds !== undefined) setRoundCap(config.maxRounds);
+  if (config.seed !== undefined) $("#seed").value = config.seed;
+  if (config.names !== undefined) $("#nameMode").value = config.names;
+  if (config.strategies) {
+    const wanted = new Set(config.strategies);
     for (const chip of $("#stratChips").children) {
       chip.classList.toggle("on", wanted.has(chip.dataset.name));
     }
   }
-  if (params.has("round")) pendingRound = Number(params.get("round"));
-  if (params.get("run") === "1") {
-    if (!params.has("engine")) urlEngine = "v1";
+  if (config.round !== undefined) pendingRound = config.round;
+  updateEstimateLine();
+  updateCardsHint();
+  if (config.run) {
     $("#setup").requestSubmit();
     return true;
   }
   return false;
 }
 
+function applyUrlParams(params) {
+  return applyRunConfig(configFromQuery(params));
+}
+
 (function initFromUrl() {
+  // A link being opened replaces its own URL with the run's: the same run,
+  // so no second history entry.
+  replaceUrlNext = new URLSearchParams(location.search).get("run") === "1";
   const ran = applyUrlParams(new URLSearchParams(location.search));
+  if (!ran) replaceUrlNext = false;
   if (!ran && location.search === "") playArrival();
 })();
 

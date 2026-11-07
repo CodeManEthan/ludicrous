@@ -9,7 +9,7 @@
 </head>
 <body>
   <header>
-    <h1>LUDICROUS <span>games at impossible scale</span></h1>
+    <h1>LUDICROUS <span class="tagline">games at impossible scale</span><span class="tagline-short">at impossible scale</span></h1>
     <button type="button" id="aboutBtn" class="link-btn">What is this?</button>
     <form id="setup">
       <div class="mode-toggle" id="modeToggle">
@@ -36,10 +36,6 @@
       <label id="gamesLabel" hidden>Games
         <input id="games" type="number" min="1" max="10000" value="1000">
       </label>
-      <div id="stratWrap" class="strat-wrap" hidden>
-        <span class="strat-title" title="Seats take the chosen strategies in turn: seat 1 the first, seat 2 the second, and so on, starting again from the first when the list runs out">Strategies (round-robin)</span>
-        <div id="stratChips" class="strat-chips"></div>
-      </div>
       <details id="advancedBox" class="opt-box">
         <summary class="btn">Options ▾</summary>
         <div class="opt-panel">
@@ -63,6 +59,12 @@
       <button id="simulateBtn" class="btn primary" type="submit">Simulate</button>
       <input id="importFile" type="file" accept=".json,application/json" hidden>
     </form>
+    <!-- Blackjack's strategy chips take a row of their own under the form,
+         so the form's controls stay on one line. -->
+      <div id="stratWrap" class="strat-wrap" hidden>
+        <span class="strat-title" title="Seats take the chosen strategies in turn: seat 1 the first, seat 2 the second, and so on, starting again from the first when the list runs out">Strategies (round-robin)</span>
+        <div id="stratChips" class="strat-chips"></div>
+      </div>
   </header>
 
   <nav id="presetRow" class="preset-row" aria-label="Presets">
@@ -95,8 +97,8 @@
             <option value="10">10 rnd/s</option>
             <option value="d240">game in ~4 min</option>
             <option value="d120">game in ~2 min</option>
-            <option value="d60" selected>game in ~1 min</option>
-            <option value="d30">game in ~30 s</option>
+            <option value="d60">game in ~1 min</option>
+            <option value="d30" selected>game in ~30 s</option>
           </select>
         </label>
         <input id="scrubber" type="range" min="0" max="1" value="0" step="1">
@@ -159,6 +161,7 @@
         <div id="tooltip" hidden></div>
       </div>
       <div id="legend" class="legend"></div>
+      <p id="colorCaption" class="caption" hidden></p>
     </section>
 
     <section id="elimSection" class="panel" hidden>

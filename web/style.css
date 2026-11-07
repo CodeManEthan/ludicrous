@@ -46,6 +46,7 @@ h1 {
   letter-spacing: 0.14em;
 }
 h1 span { color: var(--muted); font-weight: 400; letter-spacing: 0.04em; }
+h1 .tagline-short { display: none; }
 
 #setup {
   display: flex;
@@ -283,13 +284,23 @@ details.opt-box[open] > summary { background: #2c2c2a; }
 }
 .out-chip b { color: var(--ink-2); font-weight: 600; }
 
+/* At most two lines, and always two lines tall, so what sits below holds
+   still from round to round. A round with many eliminations is summarized
+   (describeEliminations in app.js) and clipped if it still runs long. */
 .banner {
   margin-top: 10px;
   font-size: 15px;
   line-height: 22px;
   color: var(--ink-2);
-  min-height: 22px;
+  height: 44px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  transition: opacity 0.15s;
 }
+/* The round on screen has moved past the one the banner describes. */
+.banner.stale { opacity: 0.45; }
 .banner .war-flash { color: var(--war); font-weight: 700; }
 .banner .win-name { color: var(--ink); font-weight: 600; }
 
@@ -409,7 +420,15 @@ details.opt-box[open] > summary { background: #2c2c2a; }
 }
 
 /* --- blackjack --- */
-.strat-wrap { display: flex; flex-direction: column; gap: 4px; }
+/* The chips get a header row of their own, right-aligned under the form. */
+.strat-wrap {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 10px;
+}
 .strat-title {
   font-size: 11px;
   text-transform: uppercase;
@@ -711,6 +730,7 @@ header > .link-btn { font-size: 13px; }
 }
 .finale .win-name { color: var(--good); font-weight: 700; }
 #skipBtn { margin-left: auto; }
+#reelBtn.active { border-color: var(--s1); color: var(--ink); }
 #pauseNote { color: var(--muted); font-size: 12px; }
 .tile .value.masked { color: var(--muted); }
 
@@ -728,27 +748,32 @@ header > .link-btn { font-size: 13px; }
   main.chart-first #stats { order: 6; }
   .about-body { padding: 14px 16px 16px; }
   h1 { font-size: 17px; }
-  h1 span { display: none; }
+  h1 .tagline { display: none; }
+  h1 .tagline-short { display: inline; font-size: 12px; }  /* keeps "What is this?" on the same row */
+  .welcome { padding: 0 16px; }
   main { padding: 10px 12px 32px; gap: 10px; }
   .panel { padding: 10px 12px; border-radius: 10px; }
   .stat-row { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 6px; }
   .tile { padding: 8px 10px; }
   .tile .value { font-size: 18px; }
 
-  .banner {
-    height: 44px;              /* exactly two lines; a long round is clipped, not stacked */
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    font-size: 14px;
-  }
+  .banner { font-size: 14px; }  /* still two lines tall, as on desktop */
   .round-label { min-width: 0; }
   .controls .speed { font-size: 11px; }
 
   .grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px 4px; }
   .grid.bj { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
   .player .pname, .player .pmeta { font-size: 10px; }
+  /* "52 · 166W" is wider than a 44px tile: wrap it onto a second line
+     (always two lines tall, so the grid doesn't jump) instead of running
+     into the next tile's label. */
+  .player .pmeta {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 12px;
+    height: 24px;
+    overflow: hidden;
+  }
   .player img { margin: 2px auto 1px; border-radius: 3px; }
   .out-strip { max-height: 96px; }
 
