@@ -34,8 +34,8 @@ jobs:
 
   artifacts:
     name: Committed builds match the source
-    # A fixed image, not ubuntu-latest: the musl binary is linked by the
-    # runner's cc, so the check is only as stable as that linker.
+    # A fixed image, not ubuntu-latest. The builds use rustc's bundled
+    # rust-lld and a locked wasm-bindgen, so no runner tool shapes the output.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
