@@ -84,7 +84,7 @@ fails unless they match the committed ones byte for byte. CI runs it on every pu
   pair splitting).
 - **Something to watch on arrival.** The bare URL plays a 1,000-player War game on 256
   decks (seed 10, 14.5 million rounds) straight away. Three presets sit under the header:
-  Ludicrous War, 1,000 × 1,000 (130 million rounds, about 8 s to simulate), and a
+  Ludicrous War, 1,000 × 1,000 (130 million rounds, about 8 s to simulate in Chromium on the laptop above), and a
   Blackjack strategy showdown.
 - **The whole game is simulated first.** War runs in the browser on the Rust core. A
   progress screen shows the rounds so far, a bar against a typical long game of that size,
