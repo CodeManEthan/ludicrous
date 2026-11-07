@@ -363,6 +363,10 @@ The version must match `core-rs/Cargo.lock`. `wasm-opt` is optional and
 would not run on the `python:3.12-slim` image, so musl is required for the
 batch binary.
 
+These setup steps were replaced on 2026-11-07: the build scripts now pin the
+toolchain, install their own locked wasm-bindgen and run no `wasm-opt`. See
+the entry for that date.
+
 ### Acceptance checks
 
 - Golden: `prepare` versus `new + step + finish` on 20 seeds across small
@@ -410,7 +414,8 @@ Where the build differed from the design, and what it measured:
   do Python-run War games from old links (they get a message pointing at the
   browser engine when asked for more).
 - **Toolchain:** wasm-bindgen-cli 0.2.127, the musl target, and binaryen 123,
-  so the wasm is optimized again (108 KB, as before).
+  so the wasm is optimized again (108 KB, as before). The builds have since
+  dropped `wasm-opt` (2026-11-07 entry).
 - The throwaway measurement programs became
   `core-rs/crates/ludicrous-bench/examples/grid.rs`, which generates the
   calculator grid.
@@ -547,7 +552,7 @@ there behind the toggle). Off means one constant rate across the budget,
 capped at one round per frame (60 rounds/s) while the field is crowded, so a
 1000-player opening is about two seconds of cards flipping and then the game
 runs proportionally. Small games never hit the cap. The default speed is
-"game in ~1 min".
+"game in ~1 min" ("game in ~30 s" since 2026-11-07).
 
 ### Highlight the top ten, configurable to twenty
 
@@ -576,3 +581,56 @@ backwards rebuilds the assignment deterministically. At the last round the
 ranking equals the final standings, so nothing switches at the reveal.
 Verified on a 200-player, 200-deck v2 game, an 8-player v1 game and a
 6-seat Blackjack session.
+
+## 2026-11-07: reproducible artifact builds, and a 30-second default
+
+### The committed builds rebuild byte for byte
+
+**Problem.** The WebAssembly bundle (`web/core/`) and `bin/lud-batch` are
+committed so the server runs without a Rust toolchain, but nothing checked
+that they matched the source. The wasm also embedded a home-directory path
+from the cargo registry, and the bytes depended on host tools: the
+`wasm-opt` version, the system linker and `strip`, and the wasm-bindgen
+build on PATH.
+
+**Built.** The artifacts are a function of the source and pinned tools only.
+`core-rs/pinned-env.sh`, sourced by both build scripts, holds the pins:
+
+- rustc 1.98.0 with the `wasm32-unknown-unknown` and
+  `x86_64-unknown-linux-musl` targets. When they are missing, the scripts
+  stop and print the `rustup toolchain install` command. The pin lives in
+  the scripts, not a `rust-toolchain.toml`, so `cargo test` keeps running on
+  current stable.
+- wasm-bindgen 0.2.127, installed by `build-wasm.sh` with `cargo install
+  --locked` under `core-rs/target/pinned-tools` and never taken from PATH. A
+  copy installed without `--locked` pulled a newer walrus, which writes its
+  version into the wasm and changed one byte.
+- Every `cargo build` runs with `--locked`, and `--remap-path-prefix` maps
+  the cargo home and the repo to fixed names, so no host path is embedded.
+
+Neither script runs `wasm-opt`: its output depends on the binaryen version.
+The wasm is 137 KB unoptimized. `build-native.sh` links the musl binary with
+the rust-lld that ships with rustc and strips symbols through rustc
+(`-C strip=symbols`). The system linker would tie the bytes to the host:
+Fedora's binutils 2.45.1 and Ubuntu 24.04's 2.42 laid out the same code as
+537,184 and 541,344 bytes. A C compiler is still needed, for the host-side proc
+macros only.
+
+`core-rs/check-artifacts.sh` rebuilds all three files and fails unless each
+matches the committed copy byte for byte. CI runs it in an `artifacts` job on
+`ubuntu-24.04`. It also passed in a clean `ubuntu:24.04` container as a
+non-root user.
+
+To rebuild by hand:
+
+```
+rustup toolchain install 1.98.0 --profile minimal \
+  --target wasm32-unknown-unknown,x86_64-unknown-linux-musl
+RUSTUP_TOOLCHAIN=1.98.0 core-rs/build-wasm.sh
+RUSTUP_TOOLCHAIN=1.98.0 core-rs/build-native.sh
+```
+
+### Default speed: 30 seconds
+
+The default playback speed is "game in ~30 s", down from a minute. The game
+the demo plays on arrival (1,000 players, 256 decks) plays at it.

@@ -1,15 +1,26 @@
 #!/usr/bin/env python3
-"""Local web server for Ludicrous.
+"""Web server for Ludicrous.
 
-Serves the browser UI from web/, card images from cards/, and a single API
-endpoint:
+Serves the browser UI from web/, card images from cards/, and three API
+endpoints. Each takes a JSON body; "game" is "war" (the default) or
+"blackjack".
 
-    POST /api/simulate   {"players": 6, "decks": 3, "seed": 42, "names": "random"}
+    POST /api/simulate       one game, e.g.
+                             {"players": 6, "decks": 3, "seed": 42, "names": "random"}
+    POST /api/batch          many games, e.g. {"players": 4, "decks": 1, "games": 1000}
+    POST /api/batch/stream   the same batch with live progress, as
+                             newline-delimited JSON (see Handler.stream_batch)
 
-The response is a game recording. Small games return mode "full" (every event,
-for card-by-card playback). Games whose event log exceeds FULL_EVENT_BUDGET
-return mode "condensed" (chart timeline + milestones only) to keep the payload
-browser-sized. Standard library only — no dependencies.
+/api/simulate returns a game recording. Small games return mode "full" (every
+event, for card-by-card playback). Games whose event log exceeds
+FULL_EVENT_BUDGET return mode "condensed" (chart timeline + milestones only)
+to keep the payload browser-sized. Single War games here run on the Python
+engine, up to 200 players and 200 decks; the page plays larger War games in
+the browser on the Rust core.
+
+War batches run on the native Rust runner (bin/lud-batch) when it is present,
+with the Python engine as the fallback. Blackjack runs on the Python engine.
+Standard library only, no dependencies.
 
 Run:  python3 server.py  [--port 8000]
 """
