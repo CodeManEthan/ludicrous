@@ -114,6 +114,35 @@ fn a_rejected_checkpoint_is_an_error_not_a_panic() {
 }
 
 #[test]
+fn a_checkpoint_holding_more_cards_than_the_game_is_refused() {
+    // Two players, one deck: 52 cards in all. Top the last player up to a full
+    // 52 while the first keeps theirs, with the card bytes to match. Each hand
+    // fits its ring on its own, but the game now holds more than 52 cards, so
+    // play would later write past a ring. Restore must refuse it.
+    let mut g = fresh(2, 1, 1);
+    g.advance(3);
+    let snap = g.save();
+    assert!(Game::restore(&snap, NullSink).is_ok());
+
+    let u16_at = |b: &[u8], at: usize| u16::from_le_bytes([b[at], b[at + 1]]);
+    let table_len = u16_at(&snap, 91) as usize;
+    let last_meta = HEADER_LEN + table_len + PLAYER_META_LEN;
+    let (dcount_at, rcount_at) = (last_meta + 7, last_meta + 9);
+    let held = u16_at(&snap, dcount_at) + u16_at(&snap, rcount_at);
+    let extra = 52 - held;
+    assert!(extra > 0);
+
+    let mut bad = snap.clone();
+    let dcount = u16_at(&snap, dcount_at) + extra;
+    bad[dcount_at..dcount_at + 2].copy_from_slice(&dcount.to_le_bytes());
+    // The last player's cards end the snapshot, deck first, so the new deck
+    // cards go just before that player's reserve.
+    let reserve_at = snap.len() - u16_at(&snap, rcount_at) as usize;
+    bad.splice(reserve_at..reserve_at, std::iter::repeat(0u8).take(extra as usize));
+    assert!(Game::restore(&bad, NullSink).is_err());
+}
+
+#[test]
 fn seeking_from_a_sparse_checkpoint_index_lands_where_a_full_replay_would() {
     // What the UI scrubber will actually do: keep a snapshot every 250
     // rounds, then jump to an arbitrary round by restoring the nearest one
