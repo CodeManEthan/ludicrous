@@ -2478,6 +2478,27 @@ function signed(n) {
   return `${n >= 0 ? "+" : ""}${fmt.format(Math.round(n * 10) / 10)}`;
 }
 
+// Outlier table columns, one list per game. The header row and each body
+// cell's data-label (the label a phone shows beside the value) both come
+// from it; the type and Replay columns have no name.
+const OUTLIER_COLUMNS = {
+  war: ["", "Seed", "Rounds", "Wars", "Deepest", "Biggest pot", "Winner", ""],
+  blackjack: ["", "Seed", "Session net", "Best seat", "Worst seat", ""],
+};
+
+function outlierHead(columns) {
+  return `<tr role="row">${columns.map((name) => `<th role="columnheader">${name}</th>`).join("")}</tr>`;
+}
+
+// cells: one [html, attributes] pair per column, in the list's order.
+function outlierRow(columns, cells) {
+  const tds = cells.map(([html, attrs], i) => {
+    const label = columns[i] ? ` data-label="${columns[i]}"` : "";
+    return `<td role="cell"${label}${attrs ? ` ${attrs}` : ""}>${html}</td>`;
+  });
+  return `<tr role="row">${tds.join("")}</tr>`;
+}
+
 let batchNoteText = null;
 
 function renderBatch() {
@@ -2504,8 +2525,7 @@ function renderBatch() {
   $("#histTitle").textContent = unfinished > 0
     ? "Game length distribution (completed games only)"
     : "Game length distribution";
-  $("#outlierHead").innerHTML =
-    "<tr><th></th><th>Seed</th><th>Rounds</th><th>Wars</th><th>Deepest</th><th>Biggest pot</th><th>Winner</th><th></th></tr>";
+  $("#outlierHead").innerHTML = outlierHead(OUTLIER_COLUMNS.war);
   const r = agg.rounds;
   const tiles = [
     ["Games", agg.completed === agg.games ? fmtNum(agg.games) : `${fmtNum(agg.completed)}/${fmtNum(agg.games)}`,
@@ -2538,8 +2558,7 @@ function renderBlackjackBatch() {
   $("#evSection").hidden = false;
   $("#seatSection").hidden = true;
   $("#histTitle").textContent = "Session net distribution (units)";
-  $("#outlierHead").innerHTML =
-    "<tr><th></th><th>Seed</th><th>Session net</th><th>Best seat</th><th>Worst seat</th><th></th></tr>";
+  $("#outlierHead").innerHTML = outlierHead(OUTLIER_COLUMNS.blackjack);
   const s = agg.session_net;
   const tiles = [
     ["Sessions", fmtNum(agg.games), fmt.format(agg.games)],
@@ -2616,15 +2635,14 @@ function drawEVChart() {
 
 function renderBlackjackOutliers() {
   const { best, worst } = batchData.aggregate;
-  const row = (session, type) => `
-    <tr>
-      <td class="otype">${type}</td>
-      <td>${session.seed}</td>
-      <td>${signed(session.net)}u</td>
-      <td>${signed(session.best_seat)}u</td>
-      <td>${signed(session.worst_seat)}u</td>
-      <td><button class="btn" data-replay="${session.seed}">Replay</button></td>
-    </tr>`;
+  const row = (session, type) => outlierRow(OUTLIER_COLUMNS.blackjack, [
+    [type, 'class="otype"'],
+    [session.seed, 'class="oseed"'],
+    [`${signed(session.net)}u`],
+    [`${signed(session.best_seat)}u`],
+    [`${signed(session.worst_seat)}u`],
+    [`<button class="btn" data-replay="${session.seed}">Replay</button>`, 'class="oreplay"'],
+  ]);
   $("#outlierRows").innerHTML =
     best.map((g) => row(g, "best")).join("") +
     worst.map((g) => row(g, "worst")).join("");
@@ -2755,17 +2773,16 @@ function barHover(event, wrap, tip, barCount, padLeft, padRight, content) {
 
 function renderOutliers() {
   const { shortest, longest } = batchData.aggregate;
-  const row = (game, type) => `
-    <tr>
-      <td class="otype">${type}</td>
-      <td>${game.seed}</td>
-      <td title="${fmt.format(game.rounds)}">${fmtNum(game.rounds)}</td>
-      <td title="${fmt.format(game.wars)}">${fmtNum(game.wars)}</td>
-      <td>×${game.deepest_war}</td>
-      <td>${game.biggest_pot}</td>
-      <td>${game.completed ? `Seat ${game.winner}` : `<span class="otype">unfinished (hit cap)</span>`}</td>
-      <td><button class="btn" data-replay="${game.seed}">Replay</button></td>
-    </tr>`;
+  const row = (game, type) => outlierRow(OUTLIER_COLUMNS.war, [
+    [type, 'class="otype"'],
+    [game.seed, 'class="oseed"'],
+    [fmtNum(game.rounds), `title="${fmt.format(game.rounds)}"`],
+    [fmtNum(game.wars), `title="${fmt.format(game.wars)}"`],
+    [`×${game.deepest_war}`],
+    [game.biggest_pot],
+    [game.completed ? `Seat ${game.winner}` : `<span class="otype">unfinished (hit cap)</span>`],
+    [`<button class="btn" data-replay="${game.seed}">Replay</button>`, 'class="oreplay"'],
+  ]);
   $("#outlierRows").innerHTML =
     shortest.map((g) => row(g, "shortest")).join("") +
     longest.map((g) => row(g, "longest")).join("");

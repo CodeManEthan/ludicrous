@@ -780,4 +780,54 @@ header > .link-btn { font-size: 13px; }
   #chartWrap { height: 220px; }
   .legend { gap: 4px 10px; font-size: 11px; }
   .elim-feed { max-height: 200px; padding-left: 32px; }
+
+  /* Outlier games: each row becomes a block. The first line is type, seed
+     and Replay; the other cells follow as label-value pairs, the label taken
+     from data-label. Every value wraps rather than widening the page. The
+     table keeps its meaning through the role attributes in the markup, since
+     changing display drops it in some engines. */
+  .outliers, .outliers tbody { display: block; width: 100%; }
+  .outliers thead {
+    display: block;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .outliers tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 14px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .outliers tr:last-child { border-bottom: 0; }
+  .outliers tr::after { content: ""; order: 2; flex-basis: 100%; }  /* ends the first line */
+  .outliers td {
+    display: block;
+    order: 3;
+    min-width: 0;
+    padding: 0;
+    overflow-wrap: anywhere;
+  }
+  .outliers td.otype, .outliers td.oseed { order: 0; }
+  .outliers td.oreplay { order: 1; margin-left: auto; }
+  .outliers td[data-label]::before {
+    content: attr(data-label);
+    content: attr(data-label) / "";
+    margin-right: 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .outliers .btn { min-height: 32px; padding: 6px 14px; }
 }
