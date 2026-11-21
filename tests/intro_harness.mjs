@@ -293,6 +293,10 @@ for (const kind of ["throw", "absent"]) {
     const page = boot({ session: kind });
     await flush();
     out[`session_${kind}`] = report(page);
+    let closeError = null;
+    try { page.$el("#introClose").click(); } catch (error) { closeError = String(error); }
+    await flush();
+    out[`session_${kind}_closed`] = { ...report(page), closeError };
   }
 }
 

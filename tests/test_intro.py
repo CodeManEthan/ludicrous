@@ -12,7 +12,8 @@
   either flag.
 - Either store throwing, or missing, counts as no flag: the popup opens and
   start-up doesn't fail. With localStorage blocked, "Don't show again"
-  still closes the popup.
+  still closes the popup; with sessionStorage blocked, closing it raises
+  nothing.
 - "Simulate a game" plays the 1,000-player showcase game, seed 10. Without
   WebAssembly it is disabled and a line says why.
 - The guided tour ("Show me around", or the header's Tour link) walks the
@@ -150,6 +151,14 @@ class IntroTest(unittest.TestCase):
                 self.assertIsNone(case["clickError"])
                 self.assertFalse(case["introOpen"])
                 self.assertEqual(case["session"], "closed")  # this tab still holds it
+
+    def test_closing_the_popup_when_session_storage_is_blocked_raises_nothing(self):
+        for name in ("session_throw_closed", "session_absent_closed"):
+            with self.subTest(case=name):
+                case = self.out[name]
+                self.assertIsNone(case["closeError"])
+                self.assertFalse(case["introOpen"])
+                self.assertIsNone(case["flag"])  # nothing lasting was written instead
 
     # -------------------------------------------------------- closing it
 
