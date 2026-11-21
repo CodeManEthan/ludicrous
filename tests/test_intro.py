@@ -19,6 +19,7 @@
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -105,6 +106,15 @@ class IntroTest(unittest.TestCase):
                 written = {pair.split("=", 1)[0] for pair in trip["query"].split("&")}
                 self.assertLessEqual(written, keys)
         self.assertIn("round", keys)  # a deep link's key, added by hand, not by runQuery
+
+    def test_query_keys_are_exactly_the_keys_config_from_query_reads(self):
+        src = (Path(__file__).parent.parent / "web" / "app.js").read_text()
+        start = src.index("function configFromQuery(")
+        body = src[start:src.index("\n}\n", start)]
+        read = set(re.findall(r'params\.(?:get|has)\("([a-z_]+)"\)', body))
+        # Numeric fields are read through a helper, from a list of [key, field] pairs.
+        read |= set(re.findall(r'\["([a-z_]+)", "[A-Za-z]+"\]', body))
+        self.assertEqual(read, set(self.out["queryKeys"]))
 
     # ----------------------------------------------------- blocked storage
 
@@ -267,6 +277,16 @@ class IntroTest(unittest.TestCase):
         [message] = case["messages"]  # the preset gave way: one run
         self.assertEqual((message["players"], message["decks"]), (6, 3))
         self.assertTrue(case["stillClaimed"])
+
+    def test_run_that_finishes_during_a_preset_grid_wait_still_wins(self):
+        case = self.out["presetRunDoneDuringWait"]
+        [message] = case["messages"]  # the preset gave way though the button was free
+        self.assertEqual((message["players"], message["decks"]), (6, 3))
+
+    def test_keys_are_ignored_while_the_tour_is_open(self):
+        case = self.out["keysTourOpen"]
+        self.assertTrue(case["opened"])
+        self.assertTrue(case["boxOpen"])
 
     def test_back_or_forward_ends_the_tour_before_the_run(self):
         case = self.out["popstateTour"]

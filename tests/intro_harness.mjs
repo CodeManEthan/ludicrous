@@ -508,6 +508,20 @@ const clickPreset = (page, name) => page.docL.dispatch("click", {
     stillClaimed: page.$el("#simulateBtn").disabled === true,
   };
 }
+{
+  // The same, but that run also finishes inside the wait and frees the
+  // button: the preset still gives way, since a later claim was made.
+  const page = bootScreen("empty", { holdGrid: true });
+  await flush();
+  clickPreset(page, "war");
+  page.$el("#players").value = 6;
+  page.$el("#decks").value = 3;
+  page.$el("#setup").requestSubmit();
+  page.$el("#simulateBtn").disabled = false;  // as that run's finally does
+  page.releaseGrid();
+  await flush();
+  out.presetRunDoneDuringWait = { messages: report(page).messages };
+}
 
 // 9. Back or Forward with the tour open ends the tour before the run starts.
 {
@@ -519,6 +533,21 @@ const clickPreset = (page, name) => page.docL.dispatch("click", {
   page.winL.dispatch("popstate");
   await flush();
   out.popstateTour = { opened, ...report(page), tourOpen: page.$el("#tour").open, tour: page.t.tour() };
+}
+
+// The page ignores keys while the tour is open, as with the popup: Escape
+// doesn't reach an open Options popover behind it (nor does Space or an
+// arrow reach playback; the same guard returns before either).
+{
+  const page = bootScreen("empty");
+  await flush();
+  page.$el("#tourBtn").click();
+  const opened = page.$el("#tour").open;
+  const box = page.$el("#advancedBox");
+  box.open = true;
+  page.world.openBoxes.push(box);
+  page.docL.dispatch("keydown", { key: "Escape", code: "Escape", target: page.$el("body") });
+  out.keysTourOpen = { opened, boxOpen: box.open };
 }
 
 // A game that loads while the tour is open (an Import) ends the tour.
