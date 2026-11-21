@@ -6,7 +6,7 @@
 
 ![A 1,000-player War game on 256 decks playing back: the line chart of card counts and the table of cards](docs/media/war-1000-players.gif)
 
-*The demo game (Simulate a game on a first visit, or the Ludicrous War preset): War with
+*The demo game (Simulate a game in the welcome popup, or the Ludicrous War preset): War with
 1,000 players on 256 decks, 14.5 million rounds, simulated in the browser and played back.
 Recorded in headless Chromium; the capture slowed the simulation from about 1 s to 2 s.*
 
@@ -82,10 +82,11 @@ fails unless they match the committed ones byte for byte. CI runs it on every pu
 - **Two games.** War (2 to 1,000 players, 1 to 1,000 decks) and Blackjack (up to 200
   seats against the dealer; dealer stands on soft 17, blackjack pays 3:2, doubling and
   pair splitting).
-- **A welcome and a tour.** A first visit opens a short welcome: Simulate a game plays a
-  1,000-player War game on 256 decks (seed 10, 14.5 million rounds), and Show me around
-  walks through the page step by step. Tour, in the header, starts the walk again. Three
-  presets sit under the header: Ludicrous War, 1,000 × 1,000 (130 million rounds, about 8 s to simulate in Chromium on the laptop above), and a
+- **A welcome and a tour.** A visit to the bare address opens a short welcome until you
+  pick Don't show again; closing it any other way hides it until the next tab or window.
+  Simulate a game plays a 1,000-player War game on 256 decks (seed 10, 14.5 million
+  rounds), and Show me around walks through the page step by step. Tour, in the header,
+  starts the walk again. Three presets sit under the header: Ludicrous War, 1,000 × 1,000 (130 million rounds, about 8 s to simulate in Chromium on the laptop above), and a
   Blackjack strategy showdown.
 - **The whole game is simulated first.** War runs in the browser on the Rust core. A
   progress screen shows the rounds so far, a bar against a typical long game of that size,
@@ -134,8 +135,8 @@ cd ludicrous
 python3 server.py
 ```
 
-Open http://localhost:8000. On a first visit a welcome popup offers a demo game or a tour
-of the page; or configure your own game and press **Simulate**.
+Open http://localhost:8000. A welcome popup offers a demo game or a tour of the page
+(until you pick Don't show again); or configure your own game and press **Simulate**.
 
 On machines other than x86-64 Linux, `bin/lud-batch` won't run and War batches fall back
 to the Python engine, which is much slower.

@@ -1,14 +1,19 @@
 """The welcome popup in web/app.js, run under node (tests/intro_harness.mjs).
 
 - A bare visit (no URL key the page reads; tracking keys like utm_source
-  don't count) runs nothing. Until the visitor has closed the welcome popup
-  once, it opens. Closing it by any route stores one flag,
-  localStorage["ludicrous-intro"] = "seen", and with the flag set a bare
-  visit opens nothing.
+  don't count) runs nothing and opens the welcome popup, unless one of two
+  flags is set. Every close, by any route, sets
+  sessionStorage["ludicrous-intro"] = "closed", which keeps the popup shut
+  for that tab only. "Don't show again" also sets
+  localStorage["ludicrous-intro"] = "never", before it closes the popup,
+  and that lasts. The "seen" value older builds stored doesn't keep it shut.
 - A URL with a key the page reads behaves as before: a run URL runs with no
-  popup, a form-only URL fills the form, and neither touches the flag.
-- Storage that throws, or no localStorage at all, counts as no flag: the
-  popup opens and start-up doesn't fail.
+  popup, a form-only URL fills the form, and neither reads nor writes
+  either flag.
+- Either store throwing, or missing, counts as no flag: the popup opens and
+  start-up doesn't fail. With localStorage blocked, "Don't show again"
+  still closes the popup; with sessionStorage blocked, closing it raises
+  nothing.
 - "Simulate a game" plays the 1,000-player showcase game, seed 10. Without
   WebAssembly it is disabled and a line says why.
 - The guided tour ("Show me around", or the header's Tour link) walks the
@@ -67,35 +72,48 @@ class IntroTest(unittest.TestCase):
                 self.assertEqual(case["workers"], 0)
                 self.assertEqual(case["fetches"], ["/rounds-grid.json"])
                 self.assertIsNone(case["flag"])
+                self.assertIsNone(case["session"])
 
-    def test_bare_visit_with_the_flag_opens_nothing_and_runs_nothing(self):
-        for name in ("flagSet", "flagSetTracking"):
+    def test_bare_visit_with_either_flag_opens_nothing_and_runs_nothing(self):
+        for name in ("closedForNow", "closedForNowTracking", "never", "neverTracking"):
             with self.subTest(case=name):
                 case = self.out[name]
                 self.assertBooted(case)
                 self.assertFalse(case["introOpened"])
                 self.assertEqual(case["workers"], 0)
                 self.assertEqual(case["fetches"], ["/rounds-grid.json"])
+                self.assertEqual(case["flagSets"], [])
+
+    def test_bare_visit_with_the_old_seen_value_opens_the_popup(self):
+        case = self.out["oldSeen"]
+        self.assertBooted(case)
+        self.assertTrue(case["introOpen"])
+        self.assertEqual(case["flag"], "seen")
 
     # ------------------------------------------------------ URLs with keys
 
-    def test_run_url_runs_with_no_popup_and_leaves_the_flag_alone(self):
-        case = self.out["runUrl"]
-        self.assertBooted(case)
-        self.assertFalse(case["introOpened"])
-        self.assertEqual(case["workers"], 1)
-        [message] = case["messages"]
-        self.assertEqual((message["type"], message["players"], message["decks"], message["seed"]),
-                         ("prepare", 6, 3, 1))
-        self.assertEqual(case["flagCalls"], [])
+    def test_run_url_runs_with_no_popup_and_leaves_both_flags_alone(self):
+        for name in ("runUrl", "runUrlFlags"):
+            with self.subTest(case=name):
+                case = self.out[name]
+                self.assertBooted(case)
+                self.assertFalse(case["introOpened"])
+                self.assertEqual(case["workers"], 1)
+                [message] = case["messages"]
+                self.assertEqual(
+                    (message["type"], message["players"], message["decks"], message["seed"]),
+                    ("prepare", 6, 3, 1))
+                self.assertEqual(case["flagCalls"], [])
 
     def test_form_only_url_fills_the_form_with_no_popup(self):
-        case = self.out["prefill"]
-        self.assertBooted(case)
-        self.assertFalse(case["introOpened"])
-        self.assertEqual(case["workers"], 0)
-        self.assertEqual(case["fetches"], ["/rounds-grid.json"])
-        self.assertEqual(case["flagCalls"], [])
+        for name in ("prefill", "prefillFlags"):
+            with self.subTest(case=name):
+                case = self.out[name]
+                self.assertBooted(case)
+                self.assertFalse(case["introOpened"])
+                self.assertEqual(case["workers"], 0)
+                self.assertEqual(case["fetches"], ["/rounds-grid.json"])
+                self.assertEqual(case["flagCalls"], [])
 
     def test_query_keys_hold_every_key_a_run_url_writes(self):
         keys = set(self.out["queryKeys"])
@@ -119,26 +137,63 @@ class IntroTest(unittest.TestCase):
     # ----------------------------------------------------- blocked storage
 
     def test_storage_that_cannot_be_used_counts_as_no_flag(self):
-        for name in ("storage_throw", "storage_absent"):
+        for name in ("storage_throw", "storage_absent", "session_throw", "session_absent"):
             with self.subTest(case=name):
                 case = self.out[name]
                 self.assertBooted(case)
                 self.assertTrue(case["introOpen"])
                 self.assertEqual(case["workers"], 0)
 
+    def test_dont_show_again_closes_the_popup_when_local_storage_is_blocked(self):
+        for name in ("storage_throw_never", "storage_absent_never"):
+            with self.subTest(case=name):
+                case = self.out[name]
+                self.assertIsNone(case["clickError"])
+                self.assertFalse(case["introOpen"])
+                self.assertEqual(case["session"], "closed")  # this tab still holds it
+
+    def test_closing_the_popup_when_session_storage_is_blocked_raises_nothing(self):
+        for name in ("session_throw_closed", "session_absent_closed"):
+            with self.subTest(case=name):
+                case = self.out[name]
+                self.assertIsNone(case["closeError"])
+                self.assertFalse(case["introOpen"])
+                self.assertIsNone(case["flag"])  # nothing lasting was written instead
+
     # -------------------------------------------------------- closing it
 
-    def test_every_way_out_of_the_popup_sets_the_flag(self):
+    def test_every_way_out_of_the_popup_sets_the_session_flag(self):
         for name, case in self.out["routes"].items():
             with self.subTest(route=name):
                 self.assertBooted(case)
                 self.assertFalse(case["introOpen"])
-                self.assertEqual(case["flag"], "seen")
+                self.assertEqual(case["session"], "closed")
+
+    def test_only_dont_show_again_writes_the_lasting_flag(self):
+        for name, case in self.out["routes"].items():
+            if name != "never":
+                with self.subTest(route=name):
+                    self.assertEqual(case["flagSets"], [["set", "ludicrous-intro", "session"]])
+                    self.assertIsNone(case["flag"])
+
+    def test_dont_show_again_writes_never_then_closes_the_popup(self):
+        case = self.out["routes"]["never"]
+        self.assertEqual(case["flag"], "never")
+        self.assertEqual(case["session"], "closed")
+        calls = case["calls"]
+        never = calls.index(["set", "local", "ludicrous-intro", "never"])
+        close = calls.index(["close", "#intro"])
+        closed = calls.index(["set", "session", "ludicrous-intro", "closed"])
+        self.assertLess(never, close)
+        self.assertLess(close, closed)
+        self.assertEqual(case["workers"], 0)
+        self.assertNotIn(["showModal", "#tour"], calls)
 
     def test_a_click_inside_the_popup_leaves_it_open(self):
         case = self.out["innerClick"]
         self.assertTrue(case["introOpen"])
         self.assertIsNone(case["flag"])
+        self.assertIsNone(case["session"])
 
     def test_only_simulate_a_game_runs_anything(self):
         for name, case in self.out["routes"].items():
@@ -243,7 +298,9 @@ class IntroTest(unittest.TestCase):
         self.assertEqual(case["opened"]["focus"], "#tourNext")
         calls = case["calls"]
         self.assertLess(calls.index(["close", "#intro"]), calls.index(["showModal", "#tour"]))
-        self.assertEqual(case["flag"], "seen")
+        self.assertEqual(case["session"], "closed")
+        self.assertIsNone(case["flag"])
+        self.assertEqual(case["flagSets"], [["set", "ludicrous-intro", "session"]])
         self.assertFalse(case["after"]["open"])
         self.assertEqual(case["after"]["focus"], "#simulateBtn")
 

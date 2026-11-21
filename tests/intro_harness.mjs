@@ -1,7 +1,8 @@
 // Loads web/app.js in node, once per case in a fresh context, with a fake
 // DOM whose elements remember what is assigned to them, keep their event
 // listeners, and record showModal/close/focus calls. fetch and Worker are
-// counted, and localStorage is a Map (or throws, or is missing). Prints what
+// counted, and localStorage and sessionStorage are each a Map (or throw, or
+// are missing). Prints what
 // the page did on load and after each action: whether the welcome popup
 // opened, what ran, and what was stored. Driven by tests/test_intro.py.
 import fs from "node:fs";
@@ -25,14 +26,16 @@ const flush = async () => {
   for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
 };
 
-function boot({ search = "", storage = "map", stored = {}, engine = true, holdGrid = false,
-  boxes = {}, narrow = false } = {}) {
+function boot({ search = "", storage = "map", stored = {}, session = "map", sessionStored = {},
+  engine = true, holdGrid = false, boxes = {}, narrow = false } = {}) {
   const world = {
-    calls: [],          // ["showModal" | "close" | "focus" | "scroll", selector], ["worker"], ...
+    calls: [],          // ["showModal" | "close" | "focus" | "scroll", selector], ["worker"],
+                        // ["set", "local" | "session", key, value], ...
     fetches: [],
     workers: [],        // each: { messages: [] }
-    storageCalls: [],   // [op, key]
-    store: new Map(Object.entries(stored)),
+    storageCalls: [],   // [op, key, "local" | "session"]
+    store: new Map(Object.entries(stored)),            // localStorage
+    session: new Map(Object.entries(sessionStored)),   // sessionStorage
     focus: null,
     boxes,              // selector -> {left, top, width, height}, for elements that have a box
     tourTargets: {},    // data-tour key -> [selectors]
@@ -178,17 +181,29 @@ function boot({ search = "", storage = "map", stored = {}, engine = true, holdGr
     globals.Worker = Worker;
     globals.WebAssembly = {};
   }
-  if (storage === "map") {
-    globals.localStorage = {
-      getItem: (k) => { world.storageCalls.push(["get", k]); return world.store.has(k) ? world.store.get(k) : null; },
-      setItem: (k, v) => { world.storageCalls.push(["set", k]); world.store.set(k, String(v)); },
-      removeItem: (k) => { world.storageCalls.push(["remove", k]); world.store.delete(k); },
-    };
-  } else if (storage === "throw") {
-    const boom = () => { throw new Error("storage is blocked"); };
-    globals.localStorage = new Proxy({}, { get: () => boom });
-  }
-  // storage === "absent": no localStorage global at all.
+  // Both stores log into storageCalls with a tag, and log each set into
+  // calls too, so a case can see a write's order against the dialog's close.
+  // "absent" leaves the global out altogether.
+  const makeStore = (kind, map, tag) => {
+    if (kind === "map") {
+      return {
+        getItem: (k) => { world.storageCalls.push(["get", k, tag]); return map.has(k) ? map.get(k) : null; },
+        setItem: (k, v) => {
+          world.storageCalls.push(["set", k, tag]);
+          world.calls.push(["set", tag, k, String(v)]);
+          map.set(k, String(v));
+        },
+        removeItem: (k) => { world.storageCalls.push(["remove", k, tag]); map.delete(k); },
+      };
+    }
+    if (kind === "throw") {
+      const boom = () => { throw new Error("storage is blocked"); };
+      return new Proxy({}, { get: () => boom });
+    }
+    return undefined;
+  };
+  if (storage !== "absent") globals.localStorage = makeStore(storage, world.store, "local");
+  if (session !== "absent") globals.sessionStorage = makeStore(session, world.session, "session");
 
   const ctx = vm.createContext(globals);
   let bootError = null;
@@ -223,7 +238,9 @@ function report(page) {
     workers: world.workers.length,
     messages: world.workers.flatMap((w) => w.messages),
     flag: world.store.get("ludicrous-intro") ?? null,
+    session: world.session.get("ludicrous-intro") ?? null,
     flagCalls: world.storageCalls.filter(([, k]) => introKey(k)),
+    flagSets: world.storageCalls.filter(([op, k]) => op === "set" && introKey(k)),
     focus: world.focus,
   };
 }
@@ -231,34 +248,59 @@ function report(page) {
 const out = {};
 const RUN_URL = "?engine=v2&players=6&decks=3&max_rounds=0&names=random&seed=1&run=1";
 
-// 1-2. A bare load: the popup with no flag, nothing with it.
+// 1-2. A bare load: the popup with neither flag, nothing with either. The
+// "seen" value older builds stored doesn't keep it shut.
+const CLOSED = { sessionStored: { "ludicrous-intro": "closed" } };
+const NEVER = { stored: { "ludicrous-intro": "never" } };
 for (const [name, opts] of Object.entries({
   bare: {},
   tracking: { search: "?utm_source=x" },
-  flagSet: { stored: { "ludicrous-intro": "seen" } },
-  flagSetTracking: { search: "?utm_source=x&fbclid=y", stored: { "ludicrous-intro": "seen" } },
+  closedForNow: CLOSED,
+  closedForNowTracking: { search: "?utm_source=x&fbclid=y", ...CLOSED },
+  never: NEVER,
+  neverTracking: { search: "?utm_source=x&fbclid=y", ...NEVER },
+  oldSeen: { stored: { "ludicrous-intro": "seen" } },
 })) {
   const page = boot(opts);
   await flush();
   out[name] = report(page);
 }
 
-// 3. URLs that name a key the page reads.
+// 3. URLs that name a key the page reads, with empty stores and with both
+// flags set.
 for (const [name, search] of Object.entries({ runUrl: RUN_URL, prefill: "?players=6" })) {
-  const page = boot({ search });
-  await flush();
-  out[name] = report(page);
+  for (const [suffix, opts] of Object.entries({ "": {}, Flags: { ...NEVER, ...CLOSED } })) {
+    const page = boot({ search, ...opts });
+    await flush();
+    out[name + suffix] = report(page);
+  }
 }
 out.queryKeys = [...boot().t.QUERY_KEYS];
 
-// 4. Storage that can't be used.
-for (const storage of ["throw", "absent"]) {
-  const page = boot({ storage });
-  await flush();
-  out[`storage_${storage}`] = report(page);
+// 4. Storage that can't be used: either store throwing or missing. With
+// localStorage blocked, "Don't show again" still closes the popup.
+for (const kind of ["throw", "absent"]) {
+  {
+    const page = boot({ storage: kind });
+    await flush();
+    out[`storage_${kind}`] = report(page);
+    let clickError = null;
+    try { page.$el("#introNever").click(); } catch (error) { clickError = String(error); }
+    await flush();
+    out[`storage_${kind}_never`] = { ...report(page), clickError };
+  }
+  {
+    const page = boot({ session: kind });
+    await flush();
+    out[`session_${kind}`] = report(page);
+    let closeError = null;
+    try { page.$el("#introClose").click(); } catch (error) { closeError = String(error); }
+    await flush();
+    out[`session_${kind}_closed`] = { ...report(page), closeError };
+  }
 }
 
-// 5. Every way out of the popup sets the flag.
+// 5. Every way out of the popup sets the session flag.
 const routes = {
   closeButton: (p) => p.$el("#introClose").click(),
   escape: (p) => { p.$el("#intro").dispatch("cancel"); p.$el("#intro").close(); },
@@ -266,6 +308,7 @@ const routes = {
   simulate: (p) => p.$el("#introSimulate").click(),
   tour: (p) => p.$el("#introTour").click(),
   popstate: (p) => p.winL.dispatch("popstate"),
+  never: (p) => p.$el("#introNever").click(),
 };
 out.routes = {};
 for (const [name, act] of Object.entries(routes)) {
@@ -315,7 +358,7 @@ for (const [name, act] of Object.entries(routes)) {
 
 // The page ignores keys while the popup is open: Escape doesn't reach an
 // open Options popover behind it. Without the popup, the same Escape closes it.
-for (const [name, opts] of Object.entries({ keysPopupOpen: {}, keysNoPopup: { stored: { "ludicrous-intro": "seen" } } })) {
+for (const [name, opts] of Object.entries({ keysPopupOpen: {}, keysNoPopup: CLOSED })) {
   const page = boot(opts);
   await flush();
   const box = page.$el("#advancedBox");
@@ -355,7 +398,7 @@ function screen(name, extra = {}) {
 }
 function bootScreen(name, opts = {}) {
   const { boxes } = screen(name);
-  const page = boot({ stored: { "ludicrous-intro": "seen" }, boxes, ...opts });
+  const page = boot({ ...CLOSED, boxes, ...opts });
   page.world.tourTargets = TOUR_TARGETS;
   return page;
 }
@@ -430,6 +473,8 @@ for (const name of Object.keys(SCREENS)) {
   out.showMeAround = {
     opened, after: tourView(page), calls: page.world.calls,
     flag: page.world.store.get("ludicrous-intro") ?? null,
+    session: page.world.session.get("ludicrous-intro") ?? null,
+    flagSets: report(page).flagSets,
     writesInTour: sets(page).length - setsAtOpen,
   };
 }
