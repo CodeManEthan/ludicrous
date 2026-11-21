@@ -798,8 +798,9 @@ header > .link-btn { font-size: 13px; }
   main.chart-first #stats { order: 6; }
   .about-body { padding: 14px 16px 16px; }
   h1 { font-size: 17px; }
+  /* Both taglines go, so the title, "What is this?" and "Tour" share the
+     first row down to 320px. */
   h1 .tagline { display: none; }
-  h1 .tagline-short { display: inline; font-size: 12px; }  /* keeps "What is this?" on the same row */
   .welcome { padding: 0 16px; }
   main { padding: 10px 12px 32px; gap: 10px; }
   .panel { padding: 10px 12px; border-radius: 10px; }
@@ -880,4 +881,12 @@ header > .link-btn { font-size: 13px; }
     font-weight: 500;
   }
   .outliers .btn { min-height: 32px; padding: 6px 14px; }
+
+  /* The welcome popup's two choices stack at full width. */
+  .intro-actions { flex-direction: column; }
+  .intro-actions .btn { width: 100%; min-height: 40px; }
+  /* The tour panel docks at the bottom; app.js scrolls each step's element
+     into the space above it and pads the page by the panel's height. */
+  .tour-panel { left: 12px; right: 12px; bottom: 12px; width: auto; }
+  .tour-actions .btn { min-height: 32px; }
 }

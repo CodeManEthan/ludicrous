@@ -3193,10 +3193,35 @@ function showTourStep(index) {
   $("#tourCount").textContent = `${index + 1} of ${tour.steps.length}`;
   $("#tourBack").disabled = index === 0;
   $("#tourNext").textContent = last ? "Done" : "Next";
-  const first = tourElements(step).find(hasBox);
-  if (first) first.scrollIntoView({ block: "nearest" });
+  placeTour();  // sizes the phone padding before the scroll below needs it
+  scrollToTourStep();
   placeTour();
   $("#tourNext").focus();
+}
+
+// The bottom of the space the step's element may use: on a phone the panel
+// docks at the bottom of the viewport, so the space ends above it.
+function tourSpaceBottom() {
+  if (!narrowScreen.matches) return window.innerHeight;
+  return window.innerHeight - $("#tourPanel").offsetHeight - 2 * TOUR_MARGIN;
+}
+
+// Brings the step's first element into view. On a phone it goes above the
+// docked panel; one taller than that space shows from its top.
+function scrollToTourStep() {
+  const first = tourElements(tour.steps[tour.index]).find(hasBox);
+  if (!first) return;
+  if (!narrowScreen.matches) {
+    first.scrollIntoView({ block: "nearest" });
+    return;
+  }
+  const box = first.getBoundingClientRect();
+  const top = TOUR_MARGIN;
+  const bottom = tourSpaceBottom();
+  let dy = 0;
+  if (box.top < top || box.height > bottom - top) dy = box.top - top;
+  else if (box.bottom > bottom) dy = box.bottom - bottom;
+  if (dy) window.scrollBy(0, dy);
 }
 
 function endTour() {
@@ -3209,20 +3234,41 @@ function endTour() {
 function placeTour() {
   if (!tour) return;
   const panel = $("#tourPanel");
+  const narrow = narrowScreen.matches;
+  // On a phone the page gets a bottom margin as tall as the docked panel,
+  // so any element, the last one included, can scroll up above it.
+  const pad = narrow ? `${panel.offsetHeight + 2 * TOUR_MARGIN}px` : "";
+  if (document.body.style.paddingBottom !== pad) document.body.style.paddingBottom = pad;
   const width = document.documentElement.clientWidth || window.innerWidth;
   const height = window.innerHeight;
+  const spaceBottom = tourSpaceBottom();
   const boxes = tourElements(tour.steps[tour.index])
     .filter(hasBox)
     .map((el) => el.getBoundingClientRect());
-  $("#tourRings").replaceChildren(...boxes.map((box) => {
+  // Each ring covers the visible part of its element: inside the viewport,
+  // and above the docked panel on a phone.
+  const rings = [];
+  for (const box of boxes) {
+    const left = Math.max(2, box.left - TOUR_RING_PAD);
+    const right = Math.min(width - 2, box.right + TOUR_RING_PAD);
+    const top = Math.max(2, box.top - TOUR_RING_PAD);
+    const bottom = Math.min(spaceBottom - 2, box.bottom + TOUR_RING_PAD);
+    if (right <= left || bottom <= top) continue;
     const ring = document.createElement("div");
     ring.className = "tour-ring";
-    ring.style.left = `${box.left - TOUR_RING_PAD}px`;
-    ring.style.top = `${box.top - TOUR_RING_PAD}px`;
-    ring.style.width = `${box.width + 2 * TOUR_RING_PAD}px`;
-    ring.style.height = `${box.height + 2 * TOUR_RING_PAD}px`;
-    return ring;
-  }));
+    ring.style.left = `${left}px`;
+    ring.style.top = `${top}px`;
+    ring.style.width = `${right - left}px`;
+    ring.style.height = `${bottom - top}px`;
+    rings.push(ring);
+  }
+  $("#tourRings").replaceChildren(...rings);
+  if (narrow) {
+    // Docked by the stylesheet.
+    panel.style.left = "";
+    panel.style.top = "";
+    return;
+  }
   const w = panel.offsetWidth;
   const h = panel.offsetHeight;
   let left = (width - w) / 2;
@@ -3257,6 +3303,7 @@ $("#tour").addEventListener("close", () => {
   tour = null;
   window.removeEventListener("scroll", placeTour);
   window.removeEventListener("resize", placeTour);
+  document.body.style.paddingBottom = "";
   $("#tourRings").replaceChildren();
   if (returnTo) returnTo.focus();
 });
