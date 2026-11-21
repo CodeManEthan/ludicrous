@@ -6,9 +6,9 @@
 
 ![A 1,000-player War game on 256 decks playing back: the line chart of card counts and the table of cards](docs/media/war-1000-players.gif)
 
-*What the demo plays when you open it: War with 1,000 players on 256 decks, 14.5 million
-rounds, simulated in the browser and played back. Recorded in headless Chromium; the
-capture slowed the simulation from about 1 s to 2 s.*
+*The demo game (Simulate a game on a first visit, or the Ludicrous War preset): War with
+1,000 players on 256 decks, 14.5 million rounds, simulated in the browser and played back.
+Recorded in headless Chromium; the capture slowed the simulation from about 1 s to 2 s.*
 
 Games at impossible scale. Take a game meant for a kitchen table, like War or
 Blackjack, and expand it far past anything you could play for real: 1,000 players,
@@ -64,7 +64,7 @@ implementation.
 | Rust, native | one thread | 25M to 37M |
 
 The Python figures span games of 6 to 200 players. The browser figure comes from a
-200-player, 200-deck game (7.07M rounds in 0.69 s) and the arrival game (14.5M rounds in
+200-player, 200-deck game (7.07M rounds in 0.69 s) and the demo game (14.5M rounds in
 0.91 s, headless). [docs/DESIGN.md](docs/DESIGN.md), the design log behind the Rust
 core, has the Rust measurements in full.
 
@@ -82,9 +82,10 @@ fails unless they match the committed ones byte for byte. CI runs it on every pu
 - **Two games.** War (2 to 1,000 players, 1 to 1,000 decks) and Blackjack (up to 200
   seats against the dealer; dealer stands on soft 17, blackjack pays 3:2, doubling and
   pair splitting).
-- **Something to watch on arrival.** The bare URL plays a 1,000-player War game on 256
-  decks (seed 10, 14.5 million rounds) straight away. Three presets sit under the header:
-  Ludicrous War, 1,000 × 1,000 (130 million rounds, about 8 s to simulate in Chromium on the laptop above), and a
+- **A welcome and a tour.** A first visit opens a short welcome: Simulate a game plays a
+  1,000-player War game on 256 decks (seed 10, 14.5 million rounds), and Show me around
+  walks through the page step by step. Tour, in the header, starts the walk again. Three
+  presets sit under the header: Ludicrous War, 1,000 × 1,000 (130 million rounds, about 8 s to simulate in Chromium on the laptop above), and a
   Blackjack strategy showdown.
 - **The whole game is simulated first.** War runs in the browser on the Rust core. A
   progress screen shows the rounds so far, a bar against a typical long game of that size,
@@ -115,9 +116,9 @@ fails unless they match the committed ones byte for byte. CI runs it on every pu
   For example `/?engine=v2&players=6&decks=3&max_rounds=0&names=random&seed=1&run=1`; add
   `round=N` to open a War game at round N.
 - **Keyboard.** Space plays and pauses, the left and right arrows step one round, and
-  Escape closes the Options popover or stops Highlights.
+  Escape closes the Options popover, stops Highlights or ends the tour.
 - **What is this?** A help panel in the header with the rules, the strategies and how the
-  engines work.
+  engines work. Tour, beside it, walks through the page.
 - **Recordings.** Save a game as JSON from the command line and open it in the browser
   with Import (under Options).
 - **Aggregate view.** A game the server plays that is too long for card-by-card playback
@@ -133,8 +134,8 @@ cd ludicrous
 python3 server.py
 ```
 
-Open http://localhost:8000. A game starts playing; configure your own and press
-**Simulate**.
+Open http://localhost:8000. On a first visit a welcome popup offers a demo game or a tour
+of the page; or configure your own game and press **Simulate**.
 
 On machines other than x86-64 Linux, `bin/lud-batch` won't run and War batches fall back
 to the Python engine, which is much slower.
@@ -220,8 +221,8 @@ Run the Python tests from the repo root:
 python3 -m unittest discover -v
 ```
 
-Three test files run parts of `web/app.js` under node (the playback plan, the first-visit
-rules, the URL and estimate helpers). They skip when node isn't installed.
+Four test files run parts of `web/app.js` under node (the playback plan, the first-visit
+rules, the URL and estimate helpers, the welcome popup and the tour). They skip when node isn't installed.
 
 Run the Rust tests, including the parity tests against the Python engine:
 

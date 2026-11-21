@@ -632,5 +632,5 @@ RUSTUP_TOOLCHAIN=1.98.0 core-rs/build-native.sh
 
 ### Default speed: 30 seconds
 
-The default playback speed is "game in ~30 s", down from a minute. The game
-the demo plays on arrival (1,000 players, 256 decks) plays at it.
+The default playback speed is "game in ~30 s", down from a minute. The demo
+game (Simulate a game, 1,000 players, 256 decks) plays at it.

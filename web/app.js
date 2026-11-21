@@ -3463,7 +3463,7 @@ function batchRunConfig(payload, data) {
 
 // Each run is a history entry, so Back walks through your runs instead of
 // dumping you out of the app. A run replayed BY Back/Forward, or one that
-// replaces a URL (the arrival game, a link being opened), only corrects the
+// replaces a URL (the demo game, a link being opened), only corrects the
 // URL in place: pushing there would trap the button.
 function writeRunUrl(config) {
   const url = new URL(location.href);
