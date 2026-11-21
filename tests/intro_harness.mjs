@@ -92,6 +92,7 @@ function boot({ search = "", storage = "map", stored = {}, engine = true, holdGr
     t.contains = (x) => x === proxy;
     t.closest = () => null;
     t.appendChild = (x) => x;
+    t.replaceChildren = (...nodes) => { t.children = nodes; };
     proxy = new Proxy(t, {
       get: (o, k) => (k in o ? o[k] : k === Symbol.toPrimitive ? () => "" : inert()),
       set: (o, k, v) => { o[k] = k === "value" ? String(v) : v; return true; },
@@ -170,6 +171,8 @@ function boot({ search = "", storage = "map", stored = {}, engine = true, holdGr
     history: { pushState() {}, replaceState() {} }, performance: { now: () => Date.now() },
     setTimeout: () => 0, clearTimeout: () => 0, setInterval: () => 0, clearInterval: () => 0,
     AbortController, fetch, Blob: inert(),
+    // Import reads the file at once.
+    FileReader: class { readAsText(file) { this.result = file.text; this.onload(); } },
   };
   if (engine) {
     globals.Worker = Worker;
@@ -192,12 +195,18 @@ function boot({ search = "", storage = "map", stored = {}, engine = true, holdGr
   try {
     vm.runInContext(src + `
 ;globalThis.__t = {
-  QUERY_KEYS, runPreset,
-  simulateBtn: () => $("#simulateBtn"),
+  QUERY_KEYS, TOUR_STEPS,
+  tour: () => (tour ? { keys: tour.steps.map((s) => s.key), index: tour.index } : null),
+  play: () => { playing = true; },
+  playing: () => playing,
 };`, ctx, { filename: "app.js" });
   } catch (error) {
     bootError = String(error && error.stack || error);
   }
+  // The tour panel's size, and the viewport width the page measures.
+  $el("#tourPanel").offsetWidth = 340;
+  $el("#tourPanel").offsetHeight = 150;
+  $el("html").clientWidth = window.innerWidth;
   return { world, ctx, $el, docL, winL, releaseGrid, bootError, t: ctx.__t };
 }
 
@@ -314,6 +323,216 @@ for (const [name, opts] of Object.entries({ keysPopupOpen: {}, keysNoPopup: { st
   page.world.openBoxes.push(box);
   page.docL.dispatch("keydown", { key: "Escape", code: "Escape", target: page.$el("body") });
   out[name] = { boxOpen: box.open };
+}
+
+// ------------------------------------------------------------ the tour
+
+// Which elements carry each step's data-tour key, as in index.html.
+const TOUR_TARGETS = {
+  mode: ["#modeToggle"], game: ["gameLabel"], size: ["#playersLabel", "decksLabel", "#cardsHint"],
+  options: ["#advancedBox"], run: ["#simulateBtn"], presets: [".preset-cards", "#presetRow"],
+  playback: ["#playback .controls"], chart: ["#chartSection"], help: ["#aboutBtn"],
+};
+// What has a box on each screen. The empty state shows the preset cards; over
+// results the preset row shows instead.
+const SCREENS = {
+  empty: ["#presetRow", "#playback .controls", "#chartSection"],
+  game: [".preset-cards"],
+  condensed: [".preset-cards", "#playback .controls"],
+  blackjackBatch: [".preset-cards", "#cardsHint", "#playback .controls", "#chartSection"],
+};
+function screen(name, extra = {}) {
+  const hidden = new Set(SCREENS[name]);
+  const boxes = {};
+  let y = 20;
+  for (const sels of Object.values(TOUR_TARGETS)) {
+    for (const sel of sels) {
+      if (!hidden.has(sel)) boxes[sel] = { left: 40, top: y, width: 120, height: 30 };
+      y += 40;
+    }
+  }
+  return { boxes: { ...boxes, ...extra } };
+}
+function bootScreen(name, opts = {}) {
+  const { boxes } = screen(name);
+  const page = boot({ stored: { "ludicrous-intro": "seen" }, boxes, ...opts });
+  page.world.tourTargets = TOUR_TARGETS;
+  return page;
+}
+const tourView = (page) => ({
+  tour: page.t.tour(),
+  open: page.$el("#tour").open,
+  title: page.$el("#tourTitle").textContent,
+  text: page.$el("#tourText").textContent,
+  count: page.$el("#tourCount").textContent,
+  next: page.$el("#tourNext").textContent,
+  backDisabled: page.$el("#tourBack").disabled,
+  rings: Array.isArray(page.$el("#tourRings").children) ? page.$el("#tourRings").children.length : null,
+  panel: { left: page.$el("#tourPanel").style.left, top: page.$el("#tourPanel").style.top },
+  focus: page.world.focus,
+});
+const sets = (page) => page.world.storageCalls.filter(([op]) => op !== "get");
+
+out.tourSteps = boot().t.TOUR_STEPS.map((s) => ({ ...s }));
+
+// 6. The Tour link over each screen: walk every step with Next to Done.
+out.walks = {};
+for (const name of Object.keys(SCREENS)) {
+  const page = bootScreen(name);
+  await flush();
+  const before = sets(page).length;
+  page.t.play();
+  page.$el("#tourBtn").click();
+  const steps = [tourView(page)];
+  const paused = !page.t.playing();
+  for (let i = 0; i < 12 && page.t.tour(); i++) {
+    page.$el("#tourNext").click();
+    if (page.t.tour()) steps.push(tourView(page));
+  }
+  out.walks[name] = {
+    steps, paused, after: tourView(page), writes: sets(page).length - before,
+    calls: page.world.calls,
+  };
+}
+
+// Back, End tour and Escape; nothing is written.
+{
+  const page = bootScreen("empty");
+  await flush();
+  const before = sets(page).length;
+  page.$el("#tourBtn").click();
+  page.$el("#tourNext").click();
+  page.$el("#tourNext").click();
+  const third = tourView(page);
+  page.$el("#tourBack").click();
+  const back = tourView(page);
+  page.$el("#tourEnd").click();
+  const ended = tourView(page);
+  page.$el("#tourBtn").click();
+  const again = tourView(page);
+  page.$el("#tour").dispatch("cancel");
+  page.$el("#tour").close();
+  const escaped = tourView(page);
+  out.tourControls = { third, back, ended, again, escaped, writes: sets(page).length - before };
+}
+
+// Show me around: the popup closes first, then the tour opens at step 1.
+{
+  const { boxes } = screen("empty");
+  const page = boot({ boxes });
+  page.world.tourTargets = TOUR_TARGETS;
+  await flush();
+  page.$el("#introTour").click();
+  const opened = tourView(page);
+  const setsAtOpen = sets(page).length;
+  page.$el("#tourNext").click();
+  page.$el("#tourEnd").click();
+  out.showMeAround = {
+    opened, after: tourView(page), calls: page.world.calls,
+    flag: page.world.store.get("ludicrous-intro") ?? null,
+    writesInTour: sets(page).length - setsAtOpen,
+  };
+}
+
+// The panel's place: below the element when it fits, else above, inside the
+// viewport; centred with no ring when the step's elements lose their boxes.
+// Re-placed on resize.
+{
+  const page = bootScreen("empty");
+  await flush();
+  page.$el("#tourBtn").click();
+  const place = {};
+  const at = (box) => {
+    page.world.boxes["#modeToggle"] = box;
+    page.winL.dispatch("resize");
+    return { ...tourView(page).panel, rings: tourView(page).rings };
+  };
+  place.below = at({ left: 900, top: 60, width: 200, height: 34 });
+  place.above = at({ left: 300, top: 700, width: 200, height: 40 });
+  place.right = at({ left: 1200, top: 60, width: 60, height: 34 });
+  delete page.world.boxes["#modeToggle"];
+  page.winL.dispatch("resize");
+  place.none = { ...tourView(page).panel, rings: tourView(page).rings, title: tourView(page).title };
+  page.$el("#tourNext").click();
+  place.stepsOn = tourView(page).title;
+  out.place = place;
+}
+
+// 8. The tour and a run never overlap.
+{
+  const page = bootScreen("empty");
+  await flush();
+  page.$el("#simulateBtn").disabled = true;
+  page.$el("#tourBtn").click();
+  out.claimedTourLink = tourView(page);
+}
+{
+  const { boxes } = screen("empty");
+  const page = boot({ boxes });
+  page.world.tourTargets = TOUR_TARGETS;
+  await flush();
+  page.$el("#simulateBtn").disabled = true;
+  page.$el("#introTour").click();
+  out.claimedShowMeAround = { ...tourView(page), introOpen: page.$el("#intro").open };
+}
+const clickPreset = (page, name) => page.docL.dispatch("click", {
+  target: { closest: () => ({ dataset: { preset: name }, disabled: false }) },
+});
+{
+  // A preset clicked while the grid loads claims the run at once; the tour
+  // won't open over it; the preset runs once the grid is in.
+  const page = bootScreen("empty", { holdGrid: true });
+  await flush();
+  clickPreset(page, "war");
+  const claimedAtOnce = page.$el("#simulateBtn").disabled === true;
+  page.$el("#tourBtn").click();
+  const tourDuringWait = tourView(page).open;
+  const workersDuringWait = page.world.workers.length;
+  page.releaseGrid();
+  await flush();
+  out.presetWait = { claimedAtOnce, tourDuringWait, workersDuringWait, messages: report(page).messages };
+}
+{
+  // A run started during the preset's grid wait (Replay submits the form):
+  // the preset gives way and leaves that run's claim in place.
+  const page = bootScreen("empty", { holdGrid: true });
+  await flush();
+  clickPreset(page, "war");
+  page.$el("#players").value = 6;
+  page.$el("#decks").value = 3;
+  page.$el("#setup").requestSubmit();
+  page.releaseGrid();
+  await flush();
+  out.presetRunDuringWait = {
+    messages: report(page).messages,
+    stillClaimed: page.$el("#simulateBtn").disabled === true,
+  };
+}
+
+// 9. Back or Forward with the tour open ends the tour before the run starts.
+{
+  const page = bootScreen("game");
+  await flush();
+  page.$el("#tourBtn").click();
+  const opened = page.$el("#tour").open;
+  page.ctx.location.search = RUN_URL;
+  page.winL.dispatch("popstate");
+  await flush();
+  out.popstateTour = { opened, ...report(page), tourOpen: page.$el("#tour").open, tour: page.t.tour() };
+}
+
+// A game that loads while the tour is open (an Import) ends the tour.
+if (process.env.LUDICROUS_RECORDING) {
+  const page = bootScreen("empty");
+  await flush();
+  page.$el("#tourBtn").click();
+  const opened = page.$el("#tour").open;
+  const text = fs.readFileSync(process.env.LUDICROUS_RECORDING, "utf8");
+  page.$el("#importFile").dispatch("change", { target: { files: [{ text }], value: "" } });
+  out.importDuringTour = {
+    opened, tourOpen: page.$el("#tour").open, tour: page.t.tour(),
+    error: typeof page.$el("#error").textContent === "string" ? page.$el("#error").textContent : null,
+  };
 }
 
 process.stdout.write(JSON.stringify(out));

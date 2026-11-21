@@ -643,6 +643,50 @@ header > .link-btn { font-size: 13px; }
 .intro-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .intro .intro-note { font-size: 12px; color: #e5c894; }
 
+/* --- the guided tour ---
+   The dialog covers the viewport, transparent, so the page behind stays
+   visible and undimmed while it is inert. app.js places the rings and the
+   panel with fixed coordinates from the step's elements. */
+.tour {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+  color: var(--ink-2);
+}
+.tour::backdrop { background: transparent; }
+.tour-ring {
+  position: fixed;
+  border: 2px solid var(--s1);
+  border-radius: 10px;
+  box-shadow: 0 0 0 4px rgba(57, 135, 229, 0.28);
+  pointer-events: none;
+}
+.tour-panel {
+  position: fixed;
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 24px));
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  font-size: 14px;
+}
+.tour-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.tour-panel h2 { margin: 0; font-size: 16px; color: var(--ink); }
+.tour-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.tour-panel p { margin: 8px 0 12px; line-height: 1.45; }
+.tour-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.tour-actions .tour-end { margin-right: auto; }
+
 .error {
   position: fixed;
   bottom: 20px;

@@ -192,6 +192,21 @@ function elimHideAfter() {
   return null;
 }
 
+// ----------------------------------------------------------- run signal
+//
+// #simulateBtn.disabled is the page's one "a run is claimed or in flight"
+// signal: every run start sets it for the run's whole life, presets and the
+// tour refuse while it is set. Each claim also counts, so a preset that
+// claimed the signal before waiting on the rounds grid can tell whether
+// another run took it over during the wait.
+
+let runClaims = 0;
+
+function claimRun() {
+  $("#simulateBtn").disabled = true;
+  return ++runClaims;
+}
+
 // ------------------------------------------------- loading overlay (server)
 //
 // v2 games build in ~100 ms and never show this. v1 games, and especially
@@ -800,7 +815,7 @@ async function simulate(event) {
   }
   const engine = pickEngine();
   const button = $("#simulateBtn");
-  button.disabled = true;
+  claimRun();
   button.textContent = "Simulating…";
   const typedSeed = takeSeed();  // once, up front: the server fallback runs the same seed
   try {
@@ -1113,6 +1128,9 @@ function load(data, elapsedMs) {
 
 // Everything that happens once `state` is built, whichever engine built it.
 function activate() {
+  // The tour's steps were chosen for what was on screen; a new game (an
+  // Import included) changes that, so it ends the tour.
+  endTour();
   pause();
   current = -1;
   pos = 0;
@@ -2399,7 +2417,7 @@ async function runBatch() {
     return;
   }
   const button = $("#simulateBtn");
-  button.disabled = true;
+  claimRun();
   button.textContent = "Running batch…";
   // Clear the previous run the moment a new one starts — stale results under
   // a multi-minute batch look exactly like a finished page.
@@ -2812,9 +2830,16 @@ function fillPreset(preset) {
 
 async function runPreset(name) {
   const preset = PRESETS[name];
-  if (!preset || $("#simulateBtn").disabled) return;  // a run is in flight
+  const button = $("#simulateBtn");
+  if (!preset || button.disabled) return;  // a run is claimed or in flight
+  // Hold the run signal through the grid wait, so the tour and a second
+  // click see a run coming. If another run claimed the signal meanwhile
+  // (Replay from the outlier table, Back or Forward), this preset gives way
+  // and leaves that run's claim alone.
+  const claim = claimRun();
   await gridReady;
-  if ($("#simulateBtn").disabled) return;  // a run started while the grid loaded
+  if (runClaims !== claim) return;
+  button.disabled = false;  // simulate() or runBatch() claims it again at once
   fillPreset(preset);
   playOnLoad = !!preset.play;
   $("#setup").requestSubmit();
@@ -2830,7 +2855,7 @@ async function playArrival() {
   if (!v2Available() || button.disabled) return;
   // Claim the button before waiting on the grid, so a preset clicked while
   // the grid loads can't start a second run beside this one.
-  button.disabled = true;
+  claimRun();
   try {
     await gridReady;
     fillPreset(PRESETS.war);
@@ -2943,10 +2968,10 @@ $("#overlay").addEventListener("click", (event) => {
   seek(chartRoundAt(event.clientX - rect.left));
 });
 
-// While a dialog is open (What is this?, the welcome popup) the page takes
+// While a dialog is open (What is this?, the welcome popup, the tour) the page takes
 // no keys: Escape belongs to the dialog, and Space can't play behind it.
 function dialogOpen() {
-  return $("#about").open || $("#intro").open;
+  return $("#about").open || $("#intro").open || $("#tour").open;
 }
 
 document.addEventListener("keydown", (event) => {
@@ -3087,7 +3112,155 @@ $("#introSimulate").addEventListener("click", () => {
 });
 $("#introTour").addEventListener("click", () => {
   $("#intro").close();
+  startTour($("#simulateBtn"));
 });
+
+// ------------------------------------------------------------ guided tour
+//
+// A step-by-step walk through the page, opened by "Show me around" in the
+// welcome popup or by the header's Tour link, over whatever is on screen.
+// Each step rings the elements marked with its data-tour key and explains
+// them in a small panel. A step with nothing on screen when the tour starts
+// is left out, so each step's one text has to hold in every state where the
+// step is kept. The tour stores nothing and never opens by itself.
+
+const TOUR_STEPS = [
+  { key: "mode", title: "Single game or Batch",
+    text: "Single game simulates one game for you to watch. Batch runs up to 10,000 games at once and shows the statistics." },
+  { key: "game", title: "Pick a game",
+    text: "War or Blackjack. For Blackjack you also choose the strategies the seats play." },
+  { key: "size", title: "How big",
+    text: "How many players (seats, in Blackjack) and how many decks. War takes up to 1,000 of each. In War, the hint beside them says how many cards each player gets." },
+  { key: "options", title: "Options",
+    text: "The seed: the same seed replays the same game. Depending on the game, Options can also cap the rounds, name the players, import a saved game, and estimate how long a game will run." },
+  { key: "run", title: "Run it",
+    text: "This button runs the whole game, or the whole batch: a single game takes seconds, a big batch longer. Every run gets its own link to share or reload." },
+  { key: "presets", title: "Or start from a preset",
+    text: "A 1,000-player War game, a 1,000 × 1,000 game of over a hundred million rounds, or a Blackjack strategy showdown." },
+  { key: "playback", title: "Playback",
+    text: "Play, pause, step a round, or drag the scrubber. Space plays and pauses; the arrow keys step one round." },
+  // Only over a game played back here: a condensed game has no playback.
+  { key: "chart", title: "The chart", needs: "playback",
+    text: "Click the chart to jump to that round. When you watch from the start, the outcome stays hidden until playback reaches the end, or until you press Skip to results." },
+  { key: "help", title: "More help",
+    text: "What is this? has the rules, the Blackjack strategies and how the engines work. Tour, beside it, starts this tour again." },
+];
+const TOUR_GAP = 10;     // px between a step's element and the panel
+const TOUR_MARGIN = 12;  // px the panel keeps inside the viewport
+const TOUR_RING_PAD = 4; // px between an element and its ring
+
+let tour = null;  // { steps, index, returnTo } while the tour is open
+
+function tourElements(step) {
+  return [...document.querySelectorAll(`[data-tour="${step.key}"]`)];
+}
+
+function hasBox(el) {
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0;
+}
+
+// The steps with something on screen now, in order.
+function tourSteps() {
+  const kept = new Set();
+  for (const step of TOUR_STEPS) {
+    if (step.needs && !kept.has(step.needs)) continue;
+    if (tourElements(step).some(hasBox)) kept.add(step.key);
+  }
+  return TOUR_STEPS.filter((step) => kept.has(step.key));
+}
+
+// Opens the tour at step 1. `returnTo` gets focus back when it ends. Never
+// while a run is claimed or in flight: the tour and a run don't overlap.
+function startTour(returnTo) {
+  if ($("#simulateBtn").disabled || $("#tour").open) return;
+  const steps = tourSteps();
+  if (!steps.length) return;
+  pause();
+  tour = { steps, index: 0, returnTo };
+  $("#tour").showModal();
+  window.addEventListener("scroll", placeTour, { passive: true });
+  window.addEventListener("resize", placeTour);
+  showTourStep(0);
+}
+
+function showTourStep(index) {
+  tour.index = index;
+  const step = tour.steps[index];
+  const last = index === tour.steps.length - 1;
+  $("#tourTitle").textContent = step.title;
+  $("#tourText").textContent = step.text;
+  $("#tourCount").textContent = `${index + 1} of ${tour.steps.length}`;
+  $("#tourBack").disabled = index === 0;
+  $("#tourNext").textContent = last ? "Done" : "Next";
+  const first = tourElements(step).find(hasBox);
+  if (first) first.scrollIntoView({ block: "nearest" });
+  placeTour();
+  $("#tourNext").focus();
+}
+
+function endTour() {
+  if ($("#tour").open) $("#tour").close();
+}
+
+// The ring around each of the step's elements that has a box, and the
+// panel next to the first: below it when it fits, else above, kept inside
+// the viewport. With nothing to point at, the panel centres itself.
+function placeTour() {
+  if (!tour) return;
+  const panel = $("#tourPanel");
+  const width = document.documentElement.clientWidth || window.innerWidth;
+  const height = window.innerHeight;
+  const boxes = tourElements(tour.steps[tour.index])
+    .filter(hasBox)
+    .map((el) => el.getBoundingClientRect());
+  $("#tourRings").replaceChildren(...boxes.map((box) => {
+    const ring = document.createElement("div");
+    ring.className = "tour-ring";
+    ring.style.left = `${box.left - TOUR_RING_PAD}px`;
+    ring.style.top = `${box.top - TOUR_RING_PAD}px`;
+    ring.style.width = `${box.width + 2 * TOUR_RING_PAD}px`;
+    ring.style.height = `${box.height + 2 * TOUR_RING_PAD}px`;
+    return ring;
+  }));
+  const w = panel.offsetWidth;
+  const h = panel.offsetHeight;
+  let left = (width - w) / 2;
+  let top = (height - h) / 2;
+  if (boxes.length) {
+    const box = boxes[0];
+    left = box.left;
+    top = box.bottom + TOUR_GAP + h <= height - TOUR_MARGIN
+      ? box.bottom + TOUR_GAP
+      : box.top - TOUR_GAP - h;
+  }
+  left = Math.max(TOUR_MARGIN, Math.min(left, width - TOUR_MARGIN - w));
+  top = Math.max(TOUR_MARGIN, Math.min(top, height - TOUR_MARGIN - h));
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+}
+
+$("#tourNext").addEventListener("click", () => {
+  if (!tour) return;
+  if (tour.index === tour.steps.length - 1) endTour();
+  else showTourStep(tour.index + 1);
+});
+$("#tourBack").addEventListener("click", () => {
+  if (tour && tour.index > 0) showTourStep(tour.index - 1);
+});
+$("#tourEnd").addEventListener("click", endTour);
+// Every way the tour ends (End tour, Done, Escape, a new game, Back or
+// Forward) comes through here. Playback stays paused.
+$("#tour").addEventListener("close", () => {
+  if (!tour) return;
+  const { returnTo } = tour;
+  tour = null;
+  window.removeEventListener("scroll", placeTour);
+  window.removeEventListener("resize", placeTour);
+  $("#tourRings").replaceChildren();
+  if (returnTo) returnTo.focus();
+});
+$("#tourBtn").addEventListener("click", () => startTour($("#tourBtn")));
 
 window.addEventListener("resize", () => {
   if (mode === "single" && state) drawChart();
@@ -3304,8 +3477,9 @@ function applyUrlParams(params) {
 
 // Back/Forward re-runs the game at that URL (v2 re-simulates in ~100 ms).
 window.addEventListener("popstate", () => {
-  // The welcome popup never stays over a history step; closing it here
-  // counts as closing it (the close event sets the flag).
+  // The tour and the welcome popup never stay over a history step; closing
+  // the popup here counts as closing it (the close event sets the flag).
+  endTour();
   if ($("#intro").open) $("#intro").close();
   historyNav = true;
   const params = new URLSearchParams(location.search);
