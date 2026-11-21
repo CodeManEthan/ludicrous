@@ -38,8 +38,8 @@ const STRATEGY_TIPS = {
 // the page checks the same number before sending, so the refusal is instant.
 const BJ_HAND_BUDGET = 10_000_000;
 
-// The showcase game: what a visit with no URL parameters plays, and the
-// "Ludicrous War" preset. Its deck count is the most decks, among the
+// The showcase game: what "Simulate a game" in the welcome popup plays, and
+// the "Ludicrous War" preset. Its deck count is the most decks, among the
 // rounds grid's deck counts, whose estimated in-browser simulation time is
 // under SHOWCASE_MAX_SECONDS (see showcaseDecks()). The seed is fixed so
 // every visitor sees the same game, one whose length is typical for its cell.
@@ -2820,16 +2820,16 @@ async function runPreset(name) {
   $("#setup").requestSubmit();
 }
 
-// A visit with no URL parameters plays the showcase game straight away:
-// simulated in the browser, then played back, with no Highlights reel. Its
-// URL replaces the bare one, so Back never lands on an empty page. Without
-// the in-browser engine (the server engine refuses 1,000 players), or if the
-// run fails or is canceled, the empty state and its presets stay, no error.
+// "Simulate a game" in the welcome popup plays the showcase game: simulated
+// in the browser, then played back, with no Highlights reel. Its URL
+// replaces the bare one, so Back never lands on an empty page. Without the
+// in-browser engine (the server engine refuses 1,000 players), or if the run
+// fails or is canceled, the empty state and its presets stay, no error.
 async function playArrival() {
-  if (!v2Available()) return;
+  const button = $("#simulateBtn");
+  if (!v2Available() || button.disabled) return;
   // Claim the button before waiting on the grid, so a preset clicked while
   // the grid loads can't start a second run beside this one.
-  const button = $("#simulateBtn");
   button.disabled = true;
   try {
     await gridReady;
@@ -2943,8 +2943,15 @@ $("#overlay").addEventListener("click", (event) => {
   seek(chartRoundAt(event.clientX - rect.left));
 });
 
+// While a dialog is open (What is this?, the welcome popup) the page takes
+// no keys: Escape belongs to the dialog, and Space can't play behind it.
+function dialogOpen() {
+  return $("#about").open || $("#intro").open;
+}
+
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !$("#about").open) {
+  if (dialogOpen()) return;
+  if (event.key === "Escape") {
     const open = document.querySelectorAll("details.opt-box[open]");
     for (const box of open) box.open = false;
     if (open.length) {
@@ -2957,7 +2964,7 @@ document.addEventListener("keydown", (event) => {
       return;
     }
   }
-  if (!state || state.mode !== "full" || $("#about").open) return;
+  if (!state || state.mode !== "full") return;
   if (["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
   if (event.code === "Space") { event.preventDefault(); togglePlay(); }
   if (event.code === "ArrowRight") { pause(); seek(current + 1); }
@@ -3035,6 +3042,53 @@ $("#about").addEventListener("click", (event) => {
   if (event.target === $("#about")) $("#about").close();
 });
 
+// ---------------------------------------------------------- welcome popup
+//
+// A bare visit opens it until the visitor closes it once, by any route:
+// either choice, the close button, Escape, the backdrop, or a Back or
+// Forward. One flag in localStorage records that; storage that can't be
+// read counts as no flag, so a blocked-storage visitor sees it every time.
+
+const INTRO_KEY = "ludicrous-intro";
+
+function introSeen() {
+  try { return localStorage.getItem(INTRO_KEY) === "seen"; }
+  catch { return false; }
+}
+
+function markIntroSeen() {
+  try { localStorage.setItem(INTRO_KEY, "seen"); }
+  catch { /* the popup just opens again next time */ }
+}
+
+function openIntro() {
+  const canPlay = v2Available();
+  const simulateBtn = $("#introSimulate");
+  simulateBtn.disabled = !canPlay;
+  if (!canPlay) simulateBtn.title = "Needs a browser with WebAssembly and Web Workers";
+  $("#introNoEngine").hidden = canPlay;
+  // showModal() focuses the autofocus control, so point it at the first
+  // choice that works here.
+  simulateBtn.autofocus = canPlay;
+  $("#introTour").autofocus = !canPlay;
+  $("#intro").showModal();
+}
+
+// Every close sets the flag, whichever control or key closed it. Nothing
+// else happens here: each button closes the popup first and then acts.
+$("#intro").addEventListener("close", markIntroSeen);
+$("#introClose").addEventListener("click", () => $("#intro").close());
+$("#intro").addEventListener("click", (event) => {
+  if (event.target === $("#intro")) $("#intro").close();
+});
+$("#introSimulate").addEventListener("click", () => {
+  $("#intro").close();
+  playArrival();
+});
+$("#introTour").addEventListener("click", () => {
+  $("#intro").close();
+});
+
 window.addEventListener("resize", () => {
   if (mode === "single" && state) drawChart();
   if (mode === "batch" && batchData) {
@@ -3102,6 +3156,16 @@ function runQuery(config) {
   q.set("seed", config.seed);
   q.set("run", "1");
   return q.toString();
+}
+
+// Every key configFromQuery() reads. A URL with none of them is a bare
+// visit (tracking keys like utm_source don't count), which may open the
+// welcome popup; a URL with any of them fills the form or runs.
+const QUERY_KEYS = ["game", "mode", "run", "engine", "players", "decks", "rounds", "games",
+  "max_rounds", "names", "strategies", "seed", "round"];
+
+function bareQuery(params) {
+  return !QUERY_KEYS.some((key) => params.has(key));
 }
 
 // The run config a URL asks for (the inverse of runQuery), plus `run`
@@ -3229,14 +3293,20 @@ function applyUrlParams(params) {
 (function initFromUrl() {
   // A link being opened replaces its own URL with the run's: the same run,
   // so no second history entry.
-  replaceUrlNext = new URLSearchParams(location.search).get("run") === "1";
-  const ran = applyUrlParams(new URLSearchParams(location.search));
+  const params = new URLSearchParams(location.search);
+  replaceUrlNext = params.get("run") === "1";
+  const ran = applyUrlParams(params);
   if (!ran) replaceUrlNext = false;
-  if (!ran && location.search === "") playArrival();
+  // A bare visit runs nothing. Until the visitor has closed the welcome
+  // popup once, it opens and offers the demo game or the tour.
+  if (bareQuery(params) && !introSeen()) openIntro();
 })();
 
 // Back/Forward re-runs the game at that URL (v2 re-simulates in ~100 ms).
 window.addEventListener("popstate", () => {
+  // The welcome popup never stays over a history step; closing it here
+  // counts as closing it (the close event sets the flag).
+  if ($("#intro").open) $("#intro").close();
   historyNav = true;
   const params = new URLSearchParams(location.search);
   if (!applyUrlParams(params)) {

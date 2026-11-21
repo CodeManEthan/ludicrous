@@ -637,6 +637,12 @@ header > .link-btn { font-size: 13px; }
 }
 .about-links { margin-top: 14px; }
 
+/* --- the welcome popup (a first visit) --- */
+.intro { width: min(440px, calc(100vw - 32px)); }
+.intro .about-body p { margin: 10px 0 0; }
+.intro-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.intro .intro-note { font-size: 12px; color: #e5c894; }
+
 .error {
   position: fixed;
   bottom: 20px;

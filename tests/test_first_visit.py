@@ -1,10 +1,10 @@
 """First-visit rules in web/app.js, run under node (tests/first_visit_harness.mjs).
 
-- A visit with no URL parameters plays a 1,000-player showcase game whose deck
-  count is the most decks (among the rounds grid's deck counts) estimated to
-  simulate in under 2 s. On the committed grid that is 256. A regrid or a new
-  wasm speed factor that moves the pick fails here, so the choice is made on
-  purpose.
+- "Simulate a game" in the welcome popup (and the Ludicrous War preset) plays
+  a 1,000-player showcase game whose deck count is the most decks (among the
+  rounds grid's deck counts) estimated to simulate in under 2 s. On the
+  committed grid that is 256. A regrid or a new wasm speed factor that moves
+  the pick fails here, so the choice is made on purpose.
 - A War game never starts with a player holding no cards: the page refuses it
   before sending anything to an engine.
 - A Blackjack batch over the hand budget is refused before it is sent, with the

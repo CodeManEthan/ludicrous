@@ -331,6 +331,28 @@
       </div>
     </dialog>
 
+  <dialog id="intro" class="about intro" aria-labelledby="introTitle" aria-describedby="introText">
+    <div class="about-body">
+      <div class="about-head">
+        <h2 id="introTitle">Welcome to Ludicrous</h2>
+        <button type="button" id="introClose" class="btn icon" title="Close (Esc)" aria-label="Close">✕</button>
+      </div>
+      <p id="introText">
+        Ludicrous takes games meant for a kitchen table, like War and Blackjack, and plays
+        them at impossible scale: 1,000 players, 1,000 decks, millions of rounds. Each game
+        is simulated in seconds, then played back like a video.
+      </p>
+      <div class="intro-actions">
+        <button type="button" id="introSimulate" class="btn primary">Simulate a game</button>
+        <button type="button" id="introTour" class="btn">Show me around</button>
+      </div>
+      <p id="introNoEngine" class="intro-note" hidden>
+        This browser can't run the 1,000-player game. Show me around, or try the Blackjack
+        showdown.
+      </p>
+    </div>
+  </dialog>
+
     <div id="loading" class="loading" hidden>
       <div class="card">
         <div class="spinner"></div>
