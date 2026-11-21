@@ -3069,21 +3069,35 @@ $("#about").addEventListener("click", (event) => {
 
 // ---------------------------------------------------------- welcome popup
 //
-// A bare visit opens it until the visitor closes it once, by any route:
-// either choice, the close button, Escape, the backdrop, or a Back or
-// Forward. One flag in localStorage records that; storage that can't be
-// read counts as no flag, so a blocked-storage visitor sees it every time.
+// A bare visit opens it until the visitor clicks "Don't show again", which
+// stores a lasting flag in localStorage. Closing it any other way (either
+// choice, the close button, Escape, the backdrop, or a Back or Forward)
+// closes it only for now: a flag in sessionStorage keeps it shut on a reload
+// or a bare visit in the same tab, and a new tab or window opens it again.
+// The "seen" value older builds stored on any close is not read as "never".
+// A flag that can't be read counts as unset and a write that fails is
+// dropped, so blocked storage never stops the page from starting.
 
 const INTRO_KEY = "ludicrous-intro";
 
-function introSeen() {
-  try { return localStorage.getItem(INTRO_KEY) === "seen"; }
+function introNever() {
+  try { return localStorage.getItem(INTRO_KEY) === "never"; }
   catch { return false; }
 }
 
-function markIntroSeen() {
-  try { localStorage.setItem(INTRO_KEY, "seen"); }
-  catch { /* the popup just opens again next time */ }
+function introClosedForNow() {
+  try { return sessionStorage.getItem(INTRO_KEY) === "closed"; }
+  catch { return false; }
+}
+
+function markIntroNever() {
+  try { localStorage.setItem(INTRO_KEY, "never"); }
+  catch { /* the close below still holds for this tab */ }
+}
+
+function markIntroClosed() {
+  try { sessionStorage.setItem(INTRO_KEY, "closed"); }
+  catch { /* the popup just opens again on the next bare load */ }
 }
 
 function openIntro() {
@@ -3099,9 +3113,9 @@ function openIntro() {
   $("#intro").showModal();
 }
 
-// Every close sets the flag, whichever control or key closed it. Nothing
-// else happens here: each button closes the popup first and then acts.
-$("#intro").addEventListener("close", markIntroSeen);
+// Every close sets the session flag, whichever control or key closed it.
+// Nothing else happens here: each button closes the popup first and then acts.
+$("#intro").addEventListener("close", markIntroClosed);
 $("#introClose").addEventListener("click", () => $("#intro").close());
 $("#intro").addEventListener("click", (event) => {
   if (event.target === $("#intro")) $("#intro").close();
@@ -3113,6 +3127,12 @@ $("#introSimulate").addEventListener("click", () => {
 $("#introTour").addEventListener("click", () => {
   $("#intro").close();
   startTour($("#simulateBtn"));
+});
+// The lasting flag is written before the close, so the close listener then
+// adds the session flag and both are set.
+$("#introNever").addEventListener("click", () => {
+  markIntroNever();
+  $("#intro").close();
 });
 
 // ------------------------------------------------------------ guided tour
@@ -3547,15 +3567,17 @@ function applyUrlParams(params) {
   replaceUrlNext = params.get("run") === "1";
   const ran = applyUrlParams(params);
   if (!ran) replaceUrlNext = false;
-  // A bare visit runs nothing. Until the visitor has closed the welcome
-  // popup once, it opens and offers the demo game or the tour.
-  if (bareQuery(params) && !introSeen()) openIntro();
+  // A bare visit runs nothing. The welcome popup opens and offers the demo
+  // game or the tour, unless the visitor chose "Don't show again" or has
+  // already closed it in this tab.
+  if (bareQuery(params) && !introNever() && !introClosedForNow()) openIntro();
 })();
 
 // Back/Forward re-runs the game at that URL (v2 re-simulates in ~100 ms).
 window.addEventListener("popstate", () => {
   // The tour and the welcome popup never stay over a history step; closing
-  // the popup here counts as closing it (the close event sets the flag).
+  // the popup here counts as closing it (the close event sets the session
+  // flag).
   endTour();
   if ($("#intro").open) $("#intro").close();
   historyNav = true;
