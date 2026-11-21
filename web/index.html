@@ -10,25 +10,26 @@
 <body>
   <header>
     <h1>LUDICROUS <span class="tagline">games at impossible scale</span><span class="tagline-short">at impossible scale</span></h1>
-    <button type="button" id="aboutBtn" class="link-btn">What is this?</button>
+    <button type="button" id="aboutBtn" class="link-btn" data-tour="help">What is this?</button>
+    <button type="button" id="tourBtn" class="link-btn" title="Show me around the page">Tour</button>
     <form id="setup">
-      <div class="mode-toggle" id="modeToggle">
+      <div class="mode-toggle" id="modeToggle" data-tour="mode">
         <button type="button" data-mode="single" class="active">Single game</button>
         <button type="button" data-mode="batch">Batch</button>
       </div>
-      <label>Game
+      <label data-tour="game">Game
         <select id="gameSel">
           <option value="war" selected>War</option>
           <option value="blackjack">Blackjack</option>
         </select>
       </label>
-      <label id="playersLabel">Players
+      <label id="playersLabel" data-tour="size">Players
         <input id="players" type="number" min="2" max="1000" value="6" title="2–1000">
       </label>
-      <label>Decks
+      <label data-tour="size">Decks
         <input id="decks" type="number" min="1" max="1000" value="3" title="1–1000">
       </label>
-      <span id="cardsHint" class="cards-hint" aria-live="polite"
+      <span id="cardsHint" class="cards-hint" aria-live="polite" data-tour="size"
             title="Cards are dealt round-robin, so when they don't divide evenly the first seats get one more"></span>
       <label id="roundsLabel" hidden>Rounds
         <input id="rounds" type="number" min="1" max="10000" value="100">
@@ -36,7 +37,7 @@
       <label id="gamesLabel" hidden>Games
         <input id="games" type="number" min="1" max="10000" value="1000">
       </label>
-      <details id="advancedBox" class="opt-box">
+      <details id="advancedBox" class="opt-box" data-tour="options">
         <summary class="btn">Options ▾</summary>
         <div class="opt-panel">
           <div id="estimateLine" class="estimate" hidden></div>
@@ -56,7 +57,7 @@
           <button id="importBtn" class="btn" type="button" title="Load a game saved by the command-line simulator (simulate.py --json)">Import…</button>
         </div>
       </details>
-      <button id="simulateBtn" class="btn primary" type="submit">Simulate</button>
+      <button id="simulateBtn" class="btn primary" type="submit" data-tour="run">Simulate</button>
       <input id="importFile" type="file" accept=".json,application/json" hidden>
     </form>
     <!-- Blackjack's strategy chips take a row of their own under the form,
@@ -67,7 +68,7 @@
       </div>
   </header>
 
-  <nav id="presetRow" class="preset-row" aria-label="Presets">
+  <nav id="presetRow" class="preset-row" aria-label="Presets" data-tour="presets">
     <span class="preset-label">Try</span>
     <button type="button" class="btn preset" data-preset="war">Ludicrous War</button>
     <button type="button" class="btn preset" data-preset="huge">1,000 × 1,000</button>
@@ -84,7 +85,7 @@
     <section id="condensedNote" class="panel note" hidden></section>
 
     <section id="playback" class="panel">
-      <div class="controls">
+      <div class="controls" data-tour="playback">
         <button id="toStart" class="btn icon" title="Jump to start">⏮</button>
         <button id="stepBack" class="btn icon" title="Step back one round">−1</button>
         <button id="playBtn" class="btn icon primary" title="Play / pause (space)">▶</button>
@@ -153,7 +154,7 @@
       <div id="outStrip" class="out-strip" hidden></div>
     </section>
 
-    <section id="chartSection" class="panel">
+    <section id="chartSection" class="panel" data-tour="chart">
       <div class="section-title"><span id="chartTitle">Card counts over time</span> <span class="hint" id="chartHint">— click the chart to seek</span></div>
       <div id="chartWrap">
         <canvas id="chart"></canvas>
@@ -218,7 +219,7 @@
       loses least per hand; for War, how long games run and whether any seat wins
       more than its share. Hit <b>Run batch</b>, or start from a preset.
     </p>
-    <div class="preset-cards">
+    <div class="preset-cards" data-tour="presets">
       <button type="button" class="preset-card" data-preset="war">
         <b>Ludicrous War</b>
         <span>1,000 players and a few hundred decks: millions of rounds, simulated in your browser in about two seconds.</span>
@@ -330,6 +331,46 @@
       </p>
       </div>
     </dialog>
+
+  <dialog id="intro" class="about intro" aria-labelledby="introTitle" aria-describedby="introText">
+    <div class="about-body">
+      <div class="about-head">
+        <h2 id="introTitle">Welcome to Ludicrous</h2>
+        <button type="button" id="introClose" class="btn icon" title="Close (Esc)" aria-label="Close">✕</button>
+      </div>
+      <p id="introText">
+        Ludicrous takes games meant for a kitchen table, like War and Blackjack, and plays
+        them at impossible scale: 1,000 players, 1,000 decks, millions of rounds. Each game
+        is simulated in seconds, then played back like a video.
+      </p>
+      <div class="intro-actions">
+        <button type="button" id="introSimulate" class="btn primary">Simulate a game</button>
+        <button type="button" id="introTour" class="btn">Show me around</button>
+      </div>
+      <p id="introNoEngine" class="intro-note" hidden>
+        This browser can't run the 1,000-player game. Show me around, or try the Blackjack
+        showdown.
+      </p>
+    </div>
+  </dialog>
+
+  <!-- The guided tour: rings around the current step's elements and a panel
+       that explains them. The page behind stays visible and undimmed. -->
+  <dialog id="tour" class="tour" aria-labelledby="tourTitle" aria-describedby="tourText">
+    <div id="tourRings" class="tour-rings"></div>
+    <div id="tourPanel" class="tour-panel">
+      <div class="tour-head">
+        <h2 id="tourTitle"></h2>
+        <span id="tourCount" class="tour-count"></span>
+      </div>
+      <p id="tourText"></p>
+      <div class="tour-actions">
+        <button type="button" id="tourEnd" class="btn tour-end">End tour</button>
+        <button type="button" id="tourBack" class="btn">Back</button>
+        <button type="button" id="tourNext" class="btn primary">Next</button>
+      </div>
+    </div>
+  </dialog>
 
     <div id="loading" class="loading" hidden>
       <div class="card">
