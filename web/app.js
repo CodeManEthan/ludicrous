@@ -3228,6 +3228,31 @@ function endTour() {
   if ($("#tour").open) $("#tour").close();
 }
 
+// On a phone the page is padded by the docked panel's height while the tour
+// is open. Dropping the padding while scrolled into it would jerk the page
+// down at once, so scroll back out of it smoothly first, then drop it.
+// A tour opened again meanwhile keeps the padding it set.
+function releaseTourPadding() {
+  const body = document.body;
+  const pad = parseFloat(body.style.paddingBottom) || 0;
+  const clear = () => { if (!tour) body.style.paddingBottom = ""; };
+  const maxScroll = document.documentElement.scrollHeight - pad - window.innerHeight;
+  if (!(pad > 0 && window.scrollY > maxScroll)) {
+    clear();
+    return;
+  }
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    window.removeEventListener("scrollend", finish);
+    clear();
+  };
+  window.addEventListener("scrollend", finish);
+  setTimeout(finish, 800);  // browsers without scrollend
+  window.scrollTo({ top: Math.max(0, maxScroll), behavior: "smooth" });
+}
+
 // The ring around each of the step's elements that has a box, and the
 // panel next to the first: below it when it fits, else above, kept inside
 // the viewport. With nothing to point at, the panel centres itself.
@@ -3303,11 +3328,16 @@ $("#tour").addEventListener("close", () => {
   tour = null;
   window.removeEventListener("scroll", placeTour);
   window.removeEventListener("resize", placeTour);
-  document.body.style.paddingBottom = "";
+  releaseTourPadding();
   $("#tourRings").replaceChildren();
-  if (returnTo) returnTo.focus();
+  if (returnTo) returnTo.focus({ preventScroll: true });  // the page stays where the tour left it
 });
 $("#tourBtn").addEventListener("click", () => startTour($("#tourBtn")));
+// The tour's backdrop is clear and inert; a click on it would move focus to
+// the dialog itself, off the panel's buttons. Keep it on Next.
+$("#tour").addEventListener("click", (event) => {
+  if (event.target === $("#tour")) $("#tourNext").focus();
+});
 
 window.addEventListener("resize", () => {
   if (mode === "single" && state) drawChart();
